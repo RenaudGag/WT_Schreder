@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WT Schréder Project</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
+    <script src="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        /* Petit ajout pour l'animation des onglets */
+        .tab-content { transition: opacity 0.2s ease-in-out; }
+        .active-tab { color: #2563eb; border-bottom: 2px solid #2563eb; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col">
+
+    <div class="bg-blue-900 text-white p-4 shadow-md flex justify-between items-center">
+        <h1 class="text-2xl font-bold">WT Schréder Project</h1>
+        <span class="text-sm bg-blue-800 px-3 py-1 rounded-full">Beta Version</span>
+    </div>
+
+    <div class="bg-white border-b border-slate-200 px-6 flex gap-8">
+        <button onclick="openTab(event, 'tab-calculator')" class="tab-btn active-tab py-4 font-semibold">Wind Turbine Calculator</button>
+        <button onclick="openTab(event, 'tab-vevor')" class="tab-btn py-4 font-semibold text-slate-500 hover:text-slate-800">My VEVOR Weather Station</button>
+        <button onclick="openTab(event, 'tab-3dmap')" class="tab-btn py-4 font-semibold text-slate-500 hover:text-slate-800">🗺️ 3D Micro-Siting</button>
+        <button onclick="openTab(event, 'tab-solutions')" class="tab-btn py-4 font-semibold text-slate-500 hover:text-slate-800">💡 Autonomy Solutions [coming soon...]</button>
+    </div>
+
+    <div class="flex-1 overflow-hidden relative">
+        
+        <div id="tab-calculator" class="tab-content h-full flex">
+            <div class="w-1/3 bg-white p-6 shadow-lg border-r border-slate-200 overflow-y-auto">
+                <h2 class="text-lg font-bold mb-4 border-b pb-2">⚙️ System Configuration</h2>
+                
+                <div class="space-y-4">
+                    <details class="bg-slate-50 border rounded-lg" open>
+                        <summary class="font-semibold p-3 cursor-pointer hover:bg-slate-100">🌍 Location Parameters</summary>
+                        <div class="p-3 border-t space-y-3">
+                            <div class="flex gap-2">
+                                <div class="flex-1"><label class="block text-xs font-semibold text-slate-500">Latitude</label><input type="number" id="input-lat" value="50.6418" step="0.0001" class="w-full border rounded p-1 text-sm"></div>
+                                <div class="flex-1"><label class="block text-xs font-semibold text-slate-500">Longitude</label><input type="number" id="input-lon" value="5.5533" step="0.0001" class="w-full border rounded p-1 text-sm"></div>
+                            </div>
+                            <div class="flex gap-2">
+                                <div class="flex-1">
+                                    <label class="block text-xs font-semibold text-slate-500">Analysis Year</label>
+                                    <select id="input-year" class="w-full border rounded p-1 text-sm bg-white">
+                                        <option value="2021">2021</option>
+                                        <option value="2022">2022</option>
+                                        <option value="2023">2023</option>
+                                        <option value="2024">2024</option>
+                                        <option value="2025" selected>2025</option></select>
+                                </div>
+                                <div class="flex-1">
+                                    <label class="block text-xs font-semibold text-slate-500">Pole Height (m)</label>
+                                    <input type="number" id="input-h" value="6" class="w-full border rounded p-1 text-sm">
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="bg-slate-50 border rounded-lg" open>
+                        <summary class="font-semibold p-3 cursor-pointer hover:bg-slate-100">🏭 Wind Turbines</summary>
+                        <div class="p-3 border-t space-y-2 text-sm">
+                            <label class="flex items-center space-x-2"><input type="checkbox" class="turbine-cb" value="HAWT – VEVOR 12V (500 W)" checked> <span>VEVOR 12V (500 W)</span></label>
+                            <label class="flex items-center space-x-2"><input type="checkbox" class="turbine-cb" value="HAWT – Rutland 1200 12V (483 W)"> <span>Rutland 1200 (483 W)</span></label>
+                            <label class="flex items-center space-x-2"><input type="checkbox" class="turbine-cb" value="VAWT – TESUP AtlasX (750 W)"> <span>TESUP AtlasX (750 W)</span></label>
+                            <label class="flex items-center space-x-2"><input type="checkbox" class="turbine-cb" value="VAWT – Leading Edge LE-v150 (200 W)"> <span>Leading Edge (200 W)</span></label>
+                        </div>
+                    </details>
+
+                    <details class="bg-slate-50 border rounded-lg" open>
+                        <summary class="font-semibold p-3 cursor-pointer hover:bg-slate-100">💡 Luminaire Configuration</summary>
+                        <div class="p-3 border-t space-y-3">
+                            <div class="flex gap-2">
+                                <div class="flex-1"><label class="block text-xs font-semibold text-slate-500">LED Model</label>
+                                    <select id="led-model" class="led-trigger w-full border rounded p-1 text-sm bg-white"><option value="Seoul 5050">Seoul 5050</option><option value="Z5M4/OSG">Z5M4/OSG</option><option value="XP-G3" selected>XP-G3</option></select>
+                                </div>
+                                <div class="flex-1"><label class="block text-xs font-semibold text-slate-500">LED Count</label><input type="number" id="led-count" value="20" class="led-trigger w-full border rounded p-1 text-sm"></div>
+                            </div>
+                            <div class="flex gap-2">
+                                <div class="flex-1"><label class="block text-xs font-semibold text-slate-500">Strings</label><input type="number" id="led-strings" value="1" class="led-trigger w-full border rounded p-1 text-sm"></div>
+                                <div class="flex-1"><label class="block text-xs font-semibold text-slate-500">Current (mA)</label><input type="number" id="led-current" value="500" step="10" class="led-trigger w-full border rounded p-1 text-sm"></div>
+                            </div>
+                            
+                            <div class="bg-blue-50 p-2 rounded border border-blue-100 grid grid-cols-2 gap-2 mt-2 text-center text-xs">
+                                <div><span class="block text-slate-500">Total Vf</span><span id="out-vf" class="font-bold text-blue-700 text-sm">-- V</span></div>
+                                <div><span class="block text-slate-500">LED Power</span><span id="out-led-power" class="font-bold text-blue-700 text-sm">-- W</span></div>
+                                <div><span class="block text-slate-500">Sys Power</span><span id="out-sys-power" class="font-bold text-blue-700 text-sm">-- W</span></div>
+                                <div><span class="block text-slate-500">Efficiency</span><span id="out-eff" class="font-bold text-blue-700 text-sm">-- %</span></div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="bg-slate-50 border rounded-lg" open>
+                        <summary class="font-semibold p-3 cursor-pointer hover:bg-slate-100 flex items-center gap-2">
+                            🛠️ Custom Wind Turbine
+                        </summary>
+                        <div class="p-3 border-t space-y-4 text-sm">
+                            <label class="flex items-center space-x-2 font-semibold text-blue-600">
+                                <input type="checkbox" id="c_en" class="w-4 h-4 accent-blue-600"> 
+                                <span>Include my custom wind turbine</span>
+                            </label>
+                            
+                            <div id="custom-turbine-settings" class="space-y-4 opacity-50 pointer-events-none transition-opacity">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-500">Turbine Name</label>
+                                    <input type="text" id="c_name" value="Hybrid Darrieus-Savonius" class="w-full border rounded p-1 text-sm mt-1">
+                                </div>
+                                
+                                <div class="flex gap-2">
+                                    <div class="flex-1">
+                                        <label class="block text-xs font-semibold text-slate-500 mb-1">Technology</label>
+                                        <div class="flex gap-2">
+                                            <label class="flex items-center gap-1"><input type="radio" name="c_type" value="HAWT"> HAWT</label>
+                                            <label class="flex items-center gap-1"><input type="radio" name="c_type" value="VAWT" checked> VAWT</label>
+                                        </div>
+                                    </div>
+                                    <div class="flex-1">
+                                        <label class="block text-xs font-semibold text-slate-500">Rotor Diameter (m)</label>
+                                        <input type="number" id="c_d" value="0.53" step="0.01" class="w-full border rounded p-1 text-sm mt-1">
+                                    </div>
+                                </div>
+
+                                <div id="div_c_h">
+                                    <label class="block text-xs font-semibold text-slate-500">Rotor Height (m)</label>
+                                    <input type="number" id="c_h" value="0.75" step="0.01" class="w-full border rounded p-1 text-sm mt-1">
+                                </div>
+
+                                <details class="bg-white border rounded p-2">
+                                    <summary class="text-xs font-bold text-slate-600 cursor-pointer">⚙️ Advanced Parameters</summary>
+                                    <div class="mt-2 space-y-2">
+                                        <div class="flex gap-2">
+                                            <div class="flex-1"><label class="block text-xs text-slate-500">Air Density (ρ)</label><input type="number" id="c_rho" value="1.225" step="0.005" class="w-full border rounded p-1 text-sm"></div>
+                                            <div class="flex-1"><label class="block text-xs text-slate-500">Aero Cp</label><input type="number" id="c_cp" value="0.15" step="0.01" class="w-full border rounded p-1 text-sm"></div>
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <div class="flex-1"><label class="block text-xs text-slate-500">Efficiency (η)</label><input type="number" id="c_eta" value="0.80" step="0.01" class="w-full border rounded p-1 text-sm"></div>
+                                        </div>
+                                        <div class="flex gap-2">
+                                            <div class="flex-1"><label class="block text-xs text-slate-500">Cut-in (m/s)</label><input type="number" id="c_vci" value="1.5" step="0.5" class="w-full border rounded p-1 text-sm"></div>
+                                            <div class="flex-1"><label class="block text-xs text-slate-500">Cut-out (m/s)</label><input type="number" id="c_vco" value="20" step="1" class="w-full border rounded p-1 text-sm"></div>
+                                        </div>
+                                    </div>
+                                </details>
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="bg-slate-50 border rounded-lg" open>
+                        <summary class="font-semibold p-3 cursor-pointer hover:bg-slate-100 flex items-center gap-2">
+                            🌙 Smart Dimming
+                        </summary>
+                        <div class="p-3 border-t space-y-4 text-sm">
+                            <label class="flex items-center space-x-2 font-semibold text-blue-600">
+                                <input type="checkbox" id="dimming_en" class="w-4 h-4 accent-blue-600"> 
+                                <span>Enable Smart Dimming</span>
+                            </label>
+                            
+                            <div id="dimming-settings" class="hidden space-y-3">
+                                <p class="text-xs text-slate-500">Define your custom power schedule (24h format).</p>
+                                
+                                <table class="w-full text-left border-collapse" id="dimming-table">
+                                    <thead>
+                                        <tr class="text-xs text-slate-500 border-b">
+                                            <th class="pb-1">Start</th>
+                                            <th class="pb-1">End</th>
+                                            <th class="pb-1">Power (%)</th>
+                                            <th class="pb-1"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dimming-tbody">
+                                        </tbody>
+                                </table>
+                                
+                                <button onclick="addDimmingRow('23:00', '05:00', 50)" class="text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 py-1 px-3 rounded w-full transition">➕ Add Step</button>
+                                
+                                <div id="dimming-preview" style="height: 180px; width: 100%;" class="border rounded bg-white"></div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <details class="bg-slate-50 border rounded-lg" open>
+                        <summary class="font-semibold p-3 cursor-pointer hover:bg-slate-100 flex items-center gap-2">
+                            ☀️ Solar Panel Configuration
+                        </summary>
+                        <div class="p-3 border-t space-y-4 text-sm">
+                            <label class="flex items-center space-x-2 font-semibold text-orange-500">
+                                <input type="checkbox" id="solar_en" class="w-4 h-4 accent-orange-500"> 
+                                <span>Add Solar Panel (35° Tilt, South)</span>
+                            </label>
+                            
+                            <div id="solar-settings" class="opacity-50 pointer-events-none transition-opacity">
+                                <label class="block text-xs font-semibold text-slate-500">Peak Power (Wp)</label>
+                                <input type="range" id="solar_wp" min="0" max="1000" step="10" value="100" class="w-full mt-2 accent-orange-500">
+                                <div class="text-right text-sm font-bold text-orange-600" id="solar_wp_val">100 Wp</div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <button onclick="runAnalysis()" id="analyze-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow-md mt-4 transition duration-200">
+                        ⚡ Run Global Analysis
+                    </button>
+                    <p id="status-text" class="text-sm text-slate-500 text-center"></p>
+                </div>
+            </div>
+
+            <div class="w-2/3 p-6 overflow-y-auto">
+
+                <div id="map" class="h-96 w-full rounded-xl shadow-md border border-slate-200 mb-6 z-[0]"></div>
+
+                
+                <div class="border-b border-slate-200 mb-4 flex gap-4 text-sm font-semibold overflow-x-auto whitespace-nowrap">
+                    <button onclick="openSubTab(event, 'sub-daily')" class="sub-tab-btn active-sub-tab text-orange-500 border-b-2 border-orange-500 pb-2">📅 Daily Balance</button>
+                    <button onclick="openSubTab(event, 'sub-monthly')" class="sub-tab-btn text-slate-500 pb-2 hover:text-slate-800">📊 Monthly</button>
+                    <button onclick="openSubTab(event, 'sub-wind')" class="sub-tab-btn text-blue-500 pb-2 hover:text-blue-800">🌬️ Wind Analysis</button>
+                    <button onclick="openSubTab(event, 'sub-annual')" class="sub-tab-btn text-slate-500 pb-2 hover:text-slate-800">🏆 Annual Prod.</button>
+                    <button onclick="openSubTab(event, 'sub-curves')" class="sub-tab-btn text-slate-500 pb-2 hover:text-slate-800">⚡ Power Curves</button>
+                    <button onclick="openSubTab(event, 'sub-summary')" class="sub-tab-btn active-sub-tab text-emerald-600 border-b-2 border-emerald-600 pb-2">📋 Summary</button>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 min-h-[450px]">
+                    <div id="sub-daily" class="sub-tab-content">
+                        <p class="text-sm text-slate-500 mb-2">Visualize day by day if the wind turbine covers the night's consumption.</p>
+                        <select id="month-filter" class="border rounded p-1 text-sm mb-4" onchange="updateDailyChart()">
+                            <option value="0">January</option>
+                            <option value="1">February</option>
+                            <option value="2">March</option>
+                            <option value="3">April</option>
+                            <option value="4">May</option>
+                            <option value="5">June</option>
+                            <option value="6">July</option>
+                            <option value="7">August</option>
+                            <option value="8">September</option>
+                            <option value="9">October</option>
+                            <option value="10">November</option>
+                            <option value="11">December</option>
+                        </select>
+                        <div id="plot-daily" style="height: 380px; width: 100%;"></div>
+                    </div>
+                    
+                    <div id="sub-monthly" class="sub-tab-content hidden"><div id="plot-monthly" style="height: 400px; width: 100%;"></div></div>
+                    <div id="sub-annual" class="sub-tab-content hidden"><div id="plot-annual" style="height: 400px; width: 100%;"></div></div>
+                    <div id="sub-curves" class="sub-tab-content hidden"><div id="plot-curves" style="height: 400px; width: 100%;"></div></div>
+                    <div id="sub-wind" class="sub-tab-content hidden">
+                        <div class="flex flex-wrap gap-4 mb-6">
+                            <div class="flex-1 min-w-[300px] border border-slate-100 rounded-lg bg-slate-50 p-2"><div id="plot-rose" style="height: 380px; width: 100%;"></div></div>
+                            <div class="flex-1 min-w-[300px] border border-slate-100 rounded-lg bg-slate-50 p-2"><div id="plot-hist" style="height: 380px; width: 100%;"></div></div>
+                        </div>
+                        <div class="border border-slate-100 rounded-lg bg-slate-50 p-2">
+                            <div id="plot-monthly-wind" style="height: 350px; width: 100%;"></div>
+                        </div>
+                    </div>
+
+                    <div id="sub-summary" class="sub-tab-content">
+                        <div id="summary-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6"></div>
+                            
+                        <div class="overflow-x-auto bg-slate-50 rounded-xl border border-slate-100 p-4">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="text-slate-500 text-xs uppercase border-b border-slate-200">
+                                        <th class="py-3 px-2">Wind Turbine</th>
+                                        <th class="py-3 px-2 text-center">Rated Power (@12 m/s)</th>
+                                        <th class="py-3 px-2 text-center">AEP (Year)</th>
+                                        <th class="py-3 px-2 text-center">AEP (10 Years)</th>
+                                        <th class="py-3 px-2 text-center">Autonomous Days</th>
+                                        <th class="py-3 px-2 text-center">Capacity Factor</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="summary-table-body" class="text-sm font-medium"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-vevor" class="tab-content h-full hidden p-6 overflow-y-auto bg-slate-100">
+            <div class="flex gap-6 h-full">
+                
+                <div class="w-1/4 min-w-[300px] flex flex-col gap-4">
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                        <h2 class="text-lg font-bold text-slate-800 mb-2">📡 Live Dashboard</h2>
+                        <p class="text-xs text-slate-500 mb-4">Fetch real-time data from your personal weather station via Wunderground API.</p>
+                        
+                        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 mb-4 text-sm">
+                            <p class="font-bold text-slate-700 mb-1">⚙️ Station Info</p>
+                            <ul class="text-slate-600 space-y-1 ml-4 list-disc">
+                                <li><b>Name:</b> VEVOR 7-in-1</li>
+                                <li><b>ID:</b> ILIGE104</li>
+                                <li><b>Location:</b> Rue de Mons 3, Liège</li>
+                            </ul>
+                        </div>
+
+                        <h3 class="font-bold text-slate-700 mb-2 mt-4">📅 Period</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-500">Start Date</label>
+                                <input type="date" id="wu-start" class="w-full border rounded p-2 text-sm mt-1">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-500">End Date</label>
+                                <input type="date" id="wu-end" class="w-full border rounded p-2 text-sm mt-1">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-500">Station Height (z) in meters</label>
+                                <input type="number" id="wu-height" value="6" step="0.5" class="w-full border rounded p-2 text-sm mt-1">
+                            </div>
+                            
+                            <button onclick="fetchVevorData()" id="wu-analyze-btn" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg shadow-md mt-2 transition duration-200">
+                                🚀 Fetch & Analyze Data
+                            </button>
+                        </div>
+                        
+                        <p id="wu-status" class="text-sm font-semibold text-center mt-4"></p>
+                    </div>
+                </div>
+
+                <div class="flex-1 flex flex-col gap-4">
+                    
+                    <div class="flex gap-4">
+                        <div class="flex-1 bg-white p-5 rounded-xl shadow-sm border-l-4 border-blue-500">
+                            <p class="text-slate-500 text-xs font-bold uppercase">Average Wind</p>
+                            <h3 class="text-3xl font-bold text-slate-800 mt-1" id="wu-kpi-avg">-- <span class="text-base font-normal text-slate-400">m/s</span></h3>
+                        </div>
+                        <div class="flex-1 bg-white p-5 rounded-xl shadow-sm border-l-4 border-red-500">
+                            <p class="text-slate-500 text-xs font-bold uppercase">Max Gust</p>
+                            <h3 class="text-3xl font-bold text-slate-800 mt-1" id="wu-kpi-gust">-- <span class="text-base font-normal text-slate-400">m/s</span></h3>
+                        </div>
+                        <div class="flex-1 bg-white p-5 rounded-xl shadow-sm border-l-4 border-purple-500">
+                            <p class="text-slate-500 text-xs font-bold uppercase">Observations</p>
+                            <h3 class="text-3xl font-bold text-slate-800 mt-1" id="wu-kpi-obs">--</h3>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex-1">
+                        <div id="plot-wu-chrono" style="height: 100%; min-height: 400px; width: 100%;"></div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-4 mt-4">
+                        <div class="flex-1 min-w-[300px] bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                            <div id="plot-wu-weibull" style="height: 400px; width: 100%;"></div>
+                        </div>
+                        <div class="flex-1 min-w-[300px] bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                            <div id="plot-wu-rose" style="height: 400px; width: 100%;"></div>
+                        </div>
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-3dmap" class="tab-content h-full hidden p-6 bg-slate-100 overflow-y-auto">
+            <div class="flex flex-col md:flex-row gap-6 h-full">
+                
+                <div class="w-full md:w-1/4 min-w-[300px] flex flex-col gap-4">
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                        <h2 class="text-lg font-bold text-slate-800 mb-4">📍 Fixed Station Coordinates</h2>
+                        
+                        <div class="mb-4">
+                            <label class="text-xs font-bold text-slate-500">Location 1 (🔴 Telescopic Mast)</label>
+                            <input type="text" value="50.641950° N, 5.553122° E" readonly class="w-full bg-slate-50 border rounded p-2 text-sm mt-1 text-slate-600">
+                            <p class="text-xs text-slate-400 mt-1 italic">🗓️ Measurement period: Sept 2023 - Feb 2024</p>
+                        </div>
+                        
+                        <div class="mb-6">
+                            <label class="text-xs font-bold text-slate-500">Location 2 (🔵 Luminaire)</label>
+                            <input type="text" value="50.642403° N, 5.553314° E" readonly class="w-full bg-slate-50 border rounded p-2 text-sm mt-1 text-slate-600">
+                            <p class="text-xs text-slate-400 mt-1 italic">🗓️ Measurement period: Mar 2024 - Present</p>
+                        </div>
+                        
+                        <button onclick="render3DMap()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg shadow-md transition duration-200">
+                            🔄 Render 3D Map
+                        </button>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col items-center">
+                        <div class="w-full text-left mb-2">
+                            <h2 class="text-sm font-bold text-slate-800">🌬️ Local Wind Rose (From VEVOR)</h2>
+                            <p class="text-xs text-slate-500">Fetch data on Page 2 first.</p>
+                        </div>
+                        <div id="plot-map3d-rose" style="height: 280px; width: 280px;"></div>
+                    </div>
+                </div>
+
+                <div class="flex-1 bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden relative min-h-[500px]">
+                    <div id="map3d-container" class="w-full h-full bg-slate-200 flex items-center justify-center text-slate-400 font-semibold">
+                        Click "Render 3D Map" to load the urban terrain.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-solutions" class="tab-content h-full hidden p-8 overflow-y-auto">
+            <h2 class="text-2xl font-bold mb-4">Solutions d'Autonomie</h2>
+            <p>Calculs d'hybridation Solaire + Éolien...</p>
+        </div>
+
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
