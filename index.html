@@ -12,10 +12,40 @@
     <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
     <script src="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.3.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lexend:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
     <style>
-        /* Petit ajout pour l'animation des onglets */
-        .tab-content { transition: opacity 0.2s ease-in-out; }
-        .active-tab { color: #2563eb; border-bottom: 2px solid #2563eb; }
+    :root {
+        /* On définit Lexend pour les titres et Inter pour le corps */
+        font-family: 'Inter', sans-serif;
+    }
+    
+    h1, h2, h3, .tab-btn {
+        font-family: 'Lexend', sans-serif;
+        letter-spacing: -0.02em;
+    }
+
+    /* Modernisation des onglets */
+    .active-tab { 
+        color: #2563eb; 
+        border-bottom: 3px solid #2563eb;
+        background: rgba(37, 99, 235, 0.05);
+    }
+
+    /* Effet de carte "Glassmorphism" subtil pour les conteneurs */
+    .glass-card {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(226, 232, 240, 0.8);
+    }
+
+    /* Custom scrollbar pour un look pro */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 h-screen flex flex-col">
@@ -367,13 +397,13 @@
                         <div class="mb-4">
                             <label class="text-xs font-bold text-slate-500">Location 1 (🔴 Telescopic Mast)</label>
                             <input type="text" value="50.641950° N, 5.553122° E" readonly class="w-full bg-slate-50 border rounded p-2 text-sm mt-1 text-slate-600">
-                            <p class="text-xs text-slate-400 mt-1 italic">🗓️ Measurement period: Sept 2023 - Feb 2024</p>
+                            <p class="text-xs text-slate-400 mt-1 italic">🗓️ Measurement period: 5th March 2026 - 26th March 2026</p>
                         </div>
                         
                         <div class="mb-6">
                             <label class="text-xs font-bold text-slate-500">Location 2 (🔵 Luminaire)</label>
                             <input type="text" value="50.642403° N, 5.553314° E" readonly class="w-full bg-slate-50 border rounded p-2 text-sm mt-1 text-slate-600">
-                            <p class="text-xs text-slate-400 mt-1 italic">🗓️ Measurement period: Mar 2024 - Present</p>
+                            <p class="text-xs text-slate-400 mt-1 italic">🗓️ Measurement period: 11th April 2026 - Present</p>
                         </div>
                         
                         <button onclick="render3DMap()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg shadow-md transition duration-200">
