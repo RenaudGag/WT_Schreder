@@ -506,31 +506,49 @@ function updateDailyChart() {
 
     let traces = [];
     
-    // 1. Production Éolienne
-    Object.keys(globalData.activeTurbines).forEach(name => {
+    // On boucle sur chaque éolienne active
+    Object.keys(globalData.activeTurbines).forEach((name, index) => {
+        const windProd = filtered.map(d => d.prods[name]);
+        const groupId = "group" + index; // Identifiant unique pour forcer l'alignement horizontal
+        
+        // 1. Production Éolienne
         traces.push({
-            x: days, y: filtered.map(d => d.prods[name]),
-            name: name, type: 'bar', marker: { color: globalData.activeTurbines[name].color }
+            x: days, 
+            y: windProd,
+            name: name, 
+            type: 'bar', 
+            marker: { color: globalData.activeTurbines[name].color },
+            offsetgroup: groupId // Assigne la barre à sa colonne
         });
-    });
 
-    // 2. Production Solaire (Empilée au-dessus de l'éolien)
-    if (solarEnabled && solarWp > 0) {
-        traces.push({
-            // Multiplication de la valeur de base (pour panneau de 1 Wp) par la tialle du panneau choisi avec curseur
-            x: days, y: filtered.map(d => d.solar_1wp * solarWp),
-            name: '☀️ Solar Production', type: 'bar', marker: { color: '#FCD34D' } // Jaune soleil
-        });
-    }
+        // 2. Production Solaire (Empilée au-dessus de CETTE éolienne spécifique)
+        if (solarEnabled && solarWp > 0) {
+            const solarProd = filtered.map(d => d.solar_1wp * solarWp);
+            traces.push({
+                x: days, 
+                y: solarProd,
+                name: index === 0 ? '☀️ Solar Production' : '☀️ Solar', 
+                type: 'bar', 
+                marker: { color: '#FCD34D' }, 
+                base: windProd, // 🔥 MAGIE : La barre solaire commence là où l'éolienne s'arrête !
+                offsetgroup: groupId, // 🔥 On la force dans la MÊME colonne que son éolienne
+                showlegend: index === 0, // Pour éviter d'avoir le Soleil en double dans la légende
+                hoverinfo: 'name+y'
+            });
+        }
+    });
 
     // 3. Consommation LED
     traces.push({
-        x: days, y: filtered.map(d => d.cons),
-        name: 'LED Consumption', mode: 'lines+markers', line: { color: '#EF4444', dash: 'dash', width: 3 }
+        x: days, 
+        y: filtered.map(d => d.cons),
+        name: 'LED Consumption', 
+        mode: 'lines+markers', 
+        line: { color: '#EF4444', dash: 'dash', width: 3 }
     });
 
     Plotly.newPlot('plot-daily', traces, { 
-        barmode: 'stack', // MAGIE : Empile l'éolien et le solaire
+        barmode: 'group', // Retour au mode groupé classique
         template: 'plotly_white', 
         title: 'Daily Energy Balance', 
         margin: {t:40, b:40, l:40, r:20},
