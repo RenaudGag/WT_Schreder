@@ -28,19 +28,17 @@ A professional web-based simulator designed to size and analyze hybrid (Wind + S
 * **Interactive Wind Rose:** The local wind rose synchronizes with the 3D map's rotation for precise orientation analysis.
 
 ### 6. VEVOR Weather Station Dashboard
-* **Local Data Sync:** Integration with **Wunderground PWS API** to fetch data from a personal VEVOR station [cite: script.js].
-* **Comparison Engine:** Compare local measurements against Open-Meteo satellite/model data to validate the site resource [cite: script.js].
+* **Local Data Sync:** Integration with **Wunderground API** to fetch data from a personal VEVOR station.
+* **Comparison Engine:** Compare local measurements against Open-Meteo data to validate the site resource.
 
 ## 🛠️ Technologies Used
-* **Frontend:** HTML5, Tailwind CSS (Styling), JavaScript (Logic) [cite: index.html].
-* **Visualization:** Plotly.js (Scientific Charts), Leaflet.js (2D Mapping), MapLibre GL (3D Mapping) [cite: index.html].
-* **APIs:** Open-Meteo (Weather Data), Wunderground (PWS Data), MapTiler (Map Tiles) [cite: script.js].
+* **Frontend:** HTML5, Tailwind CSS (Styling), JavaScript (Logic).
+* **Visualization:** Plotly.js (Scientific Charts), Leaflet.js (2D Mapping), MapLibre GL (3D Mapping).
+* **APIs:** Open-Meteo's Historical Weather API (Weather Data), Wunderground (Weather Station Data), MapTiler (Map Tiles).
 
 ## 📊 Mathematical Model
 The application relies on several engineering models:
-* **Wind:** Logarithmic law for vertical wind profile extrapolation and Weibull probability density functions [cite: script.js].
-* **Solar:** Global Tilted Irradiance (GTI) processing and Peak Sun Hours (PSH) conversion [cite: script.js].
-* **Astronomy:** Precise sunset/sunrise algorithms to determine operational hours without "staircase effects" [cite: script.js].
+* **Wind:** Logarithmic law for vertical wind profile extrapolation and Weibull probability density functions.
+* **Solar:** Global Tilted Irradiance (GTI) processing and Peak Sun Hours (PSH) conversion.
 
 ---
-*Developed as part of the WT Schréder Research Project.
