@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WT Schréder Project</title>
+    <link rel="icon" type="image/png" href="WindTurbineLOGO.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -97,7 +98,7 @@
                     <details class="bg-slate-50 border rounded-lg" open>
                         <summary class="font-semibold p-3 cursor-pointer hover:bg-slate-100">🏭 Wind Turbines</summary>
                         <div class="p-3 border-t space-y-2 text-sm">
-                            <label class="flex items-center space-x-2"><input type="checkbox" class="turbine-cb" value="HAWT – VEVOR 12V (500 W)" checked> <span>VEVOR 12V (500 W)</span></label>
+                            <label class="flex items-center space-x-2"><input type="checkbox" class="turbine-cb" value="HAWT – VEVOR 12V (500 W)"> <span>VEVOR 12V (500 W)</span></label>
                             <label class="flex items-center space-x-2"><input type="checkbox" class="turbine-cb" value="HAWT – Rutland 1200 12V (483 W)"> <span>Rutland 1200 (483 W)</span></label>
                             <label class="flex items-center space-x-2"><input type="checkbox" class="turbine-cb" value="VAWT – TESUP AtlasX (750 W)"> <span>TESUP AtlasX (750 W)</span></label>
                             <label class="flex items-center space-x-2"><input type="checkbox" class="turbine-cb" value="VAWT – Leading Edge LE-v150 (200 W)"> <span>Leading Edge (200 W)</span></label>
@@ -111,7 +112,7 @@
                                 <div class="flex-1"><label class="block text-xs font-semibold text-slate-500">LED Model</label>
                                     <select id="led-model" class="led-trigger w-full border rounded p-1 text-sm bg-white"><option value="Seoul 5050">Seoul 5050</option><option value="Z5M4/OSG">Z5M4/OSG</option><option value="XP-G3" selected>XP-G3</option></select>
                                 </div>
-                                <div class="flex-1"><label class="block text-xs font-semibold text-slate-500">LED Count</label><input type="number" id="led-count" value="20" class="led-trigger w-full border rounded p-1 text-sm"></div>
+                                <div class="flex-1"><label class="block text-xs font-semibold text-slate-500">LED Count</label><input type="number" id="led-count" value="12" class="led-trigger w-full border rounded p-1 text-sm"></div>
                             </div>
                             <div class="flex gap-2">
                                 <div class="flex-1"><label class="block text-xs font-semibold text-slate-500">Strings</label><input type="number" id="led-strings" value="1" class="led-trigger w-full border rounded p-1 text-sm"></div>
@@ -242,41 +243,68 @@
 
             <div class="w-2/3 p-6 overflow-y-auto">
 
-                <div id="map" class="h-96 w-full rounded-xl shadow-md border border-slate-200 mb-6 z-[0]"></div>
+                <div class="relative mb-6 h-96 w-full z-[0]">
+                    <div id="map" class="h-full w-full rounded-xl shadow-md border border-slate-200"></div>
+                    
+                    <iframe id="windy-iframe" class="absolute top-0 left-0 w-full h-full rounded-xl shadow-md border border-slate-200 hidden z-[500]" src="" frameborder="0"></iframe>
+                    
+                    <button onclick="toggleWindy()" id="btn-windy" class="absolute bottom-4 right-4 z-[1000] bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold py-2 px-4 rounded-full shadow-lg border border-white transition-all">
+                        🌪️ Show Live Wind Map
+                    </button>
+                </div>
 
                 
                 <div class="border-b border-slate-200 mb-4 flex gap-4 text-sm font-semibold overflow-x-auto whitespace-nowrap">
                     <button onclick="openSubTab(event, 'sub-daily')" class="sub-tab-btn active-sub-tab text-orange-500 border-b-2 border-orange-500 pb-2">📅 Daily Balance</button>
                     <button onclick="openSubTab(event, 'sub-monthly')" class="sub-tab-btn text-slate-500 pb-2 hover:text-slate-800">📊 Monthly</button>
                     <button onclick="openSubTab(event, 'sub-wind')" class="sub-tab-btn text-blue-500 pb-2 hover:text-blue-800">🌬️ Wind Analysis</button>
+                    <button onclick="openSubTab(event, 'sub-solar')" class="sub-tab-btn text-slate-500 pb-2 hover:text-yellow-600">☀️ Solar Analysis</button>
                     <button onclick="openSubTab(event, 'sub-annual')" class="sub-tab-btn text-slate-500 pb-2 hover:text-slate-800">🏆 Annual Prod.</button>
                     <button onclick="openSubTab(event, 'sub-curves')" class="sub-tab-btn text-slate-500 pb-2 hover:text-slate-800">⚡ Power Curves</button>
-                    <button onclick="openSubTab(event, 'sub-summary')" class="sub-tab-btn active-sub-tab text-emerald-600 border-b-2 border-emerald-600 pb-2">📋 Summary</button>
+                    <button onclick="openSubTab(event, 'sub-summary')" class="sub-tab-btn text-slate-500 pb-2 hover:text-slate-800">📋 Summary</button>
                 </div>
 
                 <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 min-h-[450px]">
                     <div id="sub-daily" class="sub-tab-content">
                         <p class="text-sm text-slate-500 mb-2">Visualize day by day if the wind turbine covers the night's consumption.</p>
-                        <select id="month-filter" class="border rounded p-1 text-sm mb-4" onchange="updateDailyChart()">
-                            <option value="0">January</option>
-                            <option value="1">February</option>
-                            <option value="2">March</option>
-                            <option value="3">April</option>
-                            <option value="4">May</option>
-                            <option value="5">June</option>
-                            <option value="6">July</option>
-                            <option value="7">August</option>
-                            <option value="8">September</option>
-                            <option value="9">October</option>
-                            <option value="10">November</option>
-                            <option value="11">December</option>
-                        </select>
+                        
+                        <div class="flex justify-between items-center mb-4">
+                            <select id="month-filter" class="border rounded p-1 text-sm bg-white" onchange="updateDailyChart()">
+                                <option value="0">January</option><option value="1">February</option><option value="2">March</option>
+                                <option value="3">April</option><option value="4">May</option><option value="5">June</option>
+                                <option value="6">July</option><option value="7">August</option><option value="8">September</option>
+                                <option value="9">October</option><option value="10">November</option><option value="11">December</option>
+                            </select>
+                            
+                            <div id="daily-avg-text" class="text-sm bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-full shadow-sm font-medium">
+                                Avg. Daily Prod: -- kWh/d
+                            </div>
+                        </div>
+                        
                         <div id="plot-daily" style="height: 380px; width: 100%;"></div>
                     </div>
                     
+                    <div id="sub-solar" class="sub-tab-content hidden">
+                        <div class="border border-slate-100 rounded-lg bg-slate-50 p-2">
+                            <div id="plot-solar-monthly" style="height: 380px; width: 100%;"></div>
+                        </div>
+                    </div>
+                    
                     <div id="sub-monthly" class="sub-tab-content hidden"><div id="plot-monthly" style="height: 400px; width: 100%;"></div></div>
-                    <div id="sub-annual" class="sub-tab-content hidden"><div id="plot-annual" style="height: 400px; width: 100%;"></div></div>
+                    
+                    <div id="sub-annual" class="sub-tab-content hidden w-full">
+                        <div class="flex flex-col lg:flex-row gap-4 mb-4 w-full">
+                            <div class="flex-1 min-w-0 overflow-hidden border border-slate-100 rounded-lg bg-slate-50 p-2">
+                                <div id="plot-annual-energy" style="height: 380px; width: 100%;"></div>
+                            </div>
+                            <div class="flex-1 min-w-0 overflow-hidden border border-slate-100 rounded-lg bg-slate-50 p-2">
+                                <div id="plot-annual-cf" style="height: 380px; width: 100%;"></div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div id="sub-curves" class="sub-tab-content hidden"><div id="plot-curves" style="height: 400px; width: 100%;"></div></div>
+
                     <div id="sub-wind" class="sub-tab-content hidden">
                         <div class="flex flex-wrap gap-4 mb-6">
                             <div class="flex-1 min-w-[300px] border border-slate-100 rounded-lg bg-slate-50 p-2"><div id="plot-rose" style="height: 380px; width: 100%;"></div></div>
@@ -287,7 +315,7 @@
                         </div>
                     </div>
 
-                    <div id="sub-summary" class="sub-tab-content">
+                    <div id="sub-summary" class="sub-tab-content hidden">
                         <div id="summary-cards-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6"></div>
                             
                         <div class="overflow-x-auto bg-slate-50 rounded-xl border border-slate-100 p-4">
@@ -428,9 +456,114 @@
             </div>
         </div>
 
-        <div id="tab-solutions" class="tab-content h-full hidden p-8 overflow-y-auto">
-            <h2 class="text-2xl font-bold mb-4">Solutions d'Autonomie</h2>
-            <p>Calculs d'hybridation Solaire + Éolien...</p>
+        <div id="tab-solutions" class="tab-content h-full hidden p-6 bg-slate-100 overflow-y-auto">
+            <div class="flex flex-col md:flex-row gap-6 h-full">
+                
+                <div class="w-full md:w-1/3 min-w-[320px] flex flex-col gap-4">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                        <h2 class="text-xl font-bold text-slate-800 mb-2">🔋 Hybrid Sizing</h2>
+                        <p class="text-sm text-slate-500 mb-6">Simulate the exact battery behavior hour-by-hour based on Wind, Solar, and LED consumption.</p>
+
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-6">
+                            <h3 class="text-xs font-bold text-blue-800 uppercase tracking-wide mb-2">💡 LED Configuration</h3>
+                            <ul class="text-sm text-blue-900 space-y-1">
+                                <li><b>Model:</b> <span id="p4-led-model">--</span></li>
+                                <li><b>Count:</b> <span id="p4-led-count">--</span></li>
+                                <li><b>Current:</b> <span id="p4-led-current">--</span></li>
+                                <li><b>Raw Power:</b> <span id="p4-led-raw">--</span></li>
+                                <li><b>Real Power (sys):</b> <span id="p4-led-real">--</span></li>
+                            </ul>
+                        </div>
+
+                        <div class="mb-6">
+                            <label class="block text-xs font-bold text-orange-500 uppercase tracking-wide mb-2">☀️ Solar Panel Capacity</label>
+                            <div class="flex items-center gap-4">
+                                <input type="range" id="sol-wp" min="0" max="600" step="10" value="100" class="w-full accent-orange-500" oninput="document.getElementById('sol-wp-val').innerText=this.value+' Wp'; simulateBatterySystem();">
+                                <span id="sol-wp-val" class="font-bold text-orange-600 min-w-[60px] text-right">100 Wp</span>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-xs font-bold text-emerald-600 uppercase tracking-wide mb-2">🔋 Battery Sizing Mode (LiFePO4)</label>
+                            <select id="bat-mode" class="w-full border border-slate-300 rounded-lg p-2 text-sm font-medium text-slate-700 bg-slate-50 focus:ring-2 focus:ring-emerald-500 outline-none" onchange="toggleBatMode(); simulateBatterySystem();">
+                                <option value="days">Target Backup Days (Auto Sizing)</option>
+                                <option value="manual">Manual Capacity (Wh)</option>
+                            </select>
+                        </div>
+
+                        <div id="div-bat-days" class="mb-6">
+                            <label class="block text-xs font-semibold text-slate-500 mb-2">Desired Backup Days</label>
+                            <div class="flex items-center gap-4">
+                                <input type="range" id="bat-days" min="1" max="7" step="0.5" value="3" class="w-full accent-emerald-500" oninput="document.getElementById('bat-days-val').innerText=this.value+' Days'; simulateBatterySystem();">
+                                <span id="bat-days-val" class="font-bold text-emerald-600 min-w-[60px] text-right">3 Days</span>
+                            </div>
+                        </div>
+
+                        <div id="div-bat-wh" class="mb-6 hidden">
+                            <label class="block text-xs font-semibold text-slate-500 mb-2">Total Battery Capacity (Wh)</label>
+                            <div class="flex items-center gap-4">
+                                <input type="range" id="bat-wh" min="200" max="5000" step="100" value="1500" class="w-full accent-emerald-500" oninput="document.getElementById('bat-wh-val').innerText=this.value+' Wh'; simulateBatterySystem();">
+                                <span id="bat-wh-val" class="font-bold text-emerald-600 min-w-[60px] text-right">1500 Wh</span>
+                            </div>
+                            <div id="manual-days-equiv" class="text-xs text-slate-500 mt-2 font-medium text-right bg-slate-100 p-1 rounded">Equivalent to ~X backup days</div>
+                        </div>
+
+                        <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs text-slate-600">
+                            <strong>Engineer's note:</strong> The algorithm applies a <strong>DoD of 0.8 (80%)</strong> typical for LiFePO4 batteries to preserve lifespan. The luminaire switches off if the usable capacity reaches 0%.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex-1 flex flex-col gap-4">
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-slate-800">
+                            <p class="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Total Battery</p>
+                            <h3 class="text-xl font-bold text-slate-800 mt-1" id="kpi-bat-total">-- <span class="text-sm font-normal text-slate-400">Wh</span></h3>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-emerald-500">
+                            <p class="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Annual Autonomy</p>
+                            <h3 class="text-xl font-bold text-emerald-600 mt-1" id="kpi-bat-auto">-- <span class="text-sm font-normal text-emerald-400">%</span></h3>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-red-500">
+                            <p class="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Blackout Hours</p>
+                            <h3 class="text-xl font-bold text-red-600 mt-1" id="kpi-bat-blackout">-- <span class="text-sm font-normal text-red-400">hrs</span></h3>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-orange-400">
+                            <p class="text-slate-500 text-[10px] font-bold uppercase tracking-wider">Wasted Energy (Full)</p>
+                            <h3 class="text-xl font-bold text-orange-500 mt-1" id="kpi-bat-wasted">-- <span class="text-sm font-normal text-orange-300">kWh</span></h3>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col gap-4">
+                        
+                        <div class="flex justify-between items-center border-b border-slate-100 pb-2">
+                            <h3 class="font-bold text-slate-800">🗓️ Detailed Monthly View</h3>
+                            <select id="bat-month-filter" class="border rounded p-1 text-sm font-bold bg-slate-50 text-blue-600" onchange="simulateBatterySystem()">
+                                <option value="0">January</option><option value="1">February</option><option value="2">March</option>
+                                <option value="3">April</option><option value="4">May</option><option value="5">June</option>
+                                <option value="6">July</option><option value="7">August</option><option value="8">September</option>
+                                <option value="9">October</option><option value="10">November</option><option value="11" selected>December</option>
+                            </select>
+                        </div>
+
+                        <div class="w-full h-[220px] relative">
+                            <div id="plot-soc-month" class="w-full h-full"></div>
+                        </div>
+                        
+                        <div class="w-full h-[250px] relative border-t border-slate-100 pt-2">
+                            <div id="plot-balance-month" class="w-full h-full"></div>
+                        </div>
+
+                        <div class="mt-4 pt-2 border-t border-slate-200 border-dashed">
+                            <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Yearly Overview</h3>
+                            <div class="w-full h-[150px] relative">
+                                <div id="plot-soc-annual" class="w-full h-full"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
         </div>
 
     </div>

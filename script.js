@@ -38,30 +38,47 @@ function openTab(evt, tabId) {
 }
 
 function openSubTab(evt, tabId) {
+    // 1. Cacher tous les contenus
     document.querySelectorAll('.sub-tab-content').forEach(el => el.classList.add('hidden'));
+    
+    // 2. Réinitialiser le style de tous les boutons
     document.querySelectorAll('.sub-tab-btn').forEach(btn => {
         btn.classList.remove('active-sub-tab', 'text-orange-500', 'border-b-2', 'border-orange-500');
         btn.classList.add('text-slate-500');
     });
+    
+    // 3. Afficher l'onglet cliqué et styliser son bouton
     document.getElementById(tabId).classList.remove('hidden');
     evt.currentTarget.classList.remove('text-slate-500');
     evt.currentTarget.classList.add('active-sub-tab', 'text-orange-500', 'border-b-2', 'border-orange-500');
 
-    // Simule un redimensionnement de la fenêtre pour forcer Plotly à ajuster parfaitement la taille des graphiques cachés !
-    setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 50);
+    // 4. CORRECTION PLOTLY : Forcer le redimensionnement des graphiques dans cet onglet
+    setTimeout(() => {
+        const activeTab = document.getElementById(tabId);
+        // Trouve tous les graphiques Plotly générés dans cet onglet spécifique
+        const plotlyGraphs = activeTab.querySelectorAll('.js-plotly-plot');
+        
+        plotlyGraphs.forEach(graph => {
+            Plotly.Plots.resize(graph); // Commande officielle de l'API Plotly pour s'ajuster à 100%
+        });
+    }, 50); // Petit délai de 50ms pour s'assurer que le CSS "hidden" a bien disparu avant de mesurer
 }
 
 
 // ==========================================
-// 3. CARTE INTERACTIVE (LEAFLET / CARTODB)
+// 3. CARTE INTERACTIVE ET WINDY.COM
 // ==========================================
 
 document.addEventListener("DOMContentLoaded", () => {
     map = L.map('map').setView([50.6418, 5.5533], 7);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    
+    // 1. Fond de carte classique (CartoDB)
+    const cartoDB = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; OpenStreetMap contributors &copy; CARTO', subdomains: 'abcd', maxZoom: 20
-    }).addTo(map);
+    });
+    cartoDB.addTo(map);
 
+    // --- Suite du code classique (Marqueur et Recherche) ---
     windIcon = L.icon({ iconUrl: 'turbine_icon.png', iconSize: [72, 72], iconAnchor: [36, 72], popupAnchor: [0, -72] });
     marker = L.marker([50.6418, 5.5533], {icon: windIcon}).addTo(map);
 
@@ -89,6 +106,34 @@ function updateMapFromInputs() {
         map.setView([lat, lng], map.getZoom());
         if(marker) map.removeLayer(marker);
         marker = L.marker([lat, lng], {icon: windIcon}).addTo(map);
+    }
+}
+
+// 2. Fonction pour Windy.com
+function toggleWindy() {
+    const iframe = document.getElementById('windy-iframe');
+    const btn = document.getElementById('btn-windy');
+    const lat = document.getElementById('input-lat').value || 50.6418;
+    const lon = document.getElementById('input-lon').value || 5.5533;
+
+    if (iframe.classList.contains('hidden')) {
+        // ACTIVER WINDY
+        const windyUrl = `https://embed.windy.com/embed.html?type=map&location=coordinates&metricRain=mm&metricTemp=°C&metricWind=m/s&zoom=6&overlay=wind&product=ecmwf&level=surface&lat=${lat}&lon=${lon}&detailLat=${lat}&detailLon=${lon}&marker=true`;
+        
+        iframe.src = windyUrl;
+        iframe.classList.remove('hidden');
+        
+        btn.innerHTML = "❌ Close Animated Map";
+        btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+        btn.classList.add('bg-red-500', 'hover:bg-red-600');
+    } else {
+        // DÉSACTIVER WINDY
+        iframe.src = ""; 
+        iframe.classList.add('hidden');
+        
+        btn.innerHTML = "🌪️ Show Live Wind Map";
+        btn.classList.remove('bg-red-500', 'hover:bg-red-600');
+        btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
     }
 }
 
@@ -147,6 +192,21 @@ function calculateRealTimeLED() {
     document.getElementById('out-eff').innerText = (driver_eff * 100).toFixed(1) + " %";
     
     return system_power; // On le retourne pour l'utiliser dans l'analyse
+}
+
+// Calcule la vraie puissance électrique pour un courant donné
+function getExactDimmedPower(target_current_ma) {
+    if (target_current_ma <= 0) return 0;
+    const model = document.getElementById('led-model').value;
+    const count = parseFloat(document.getElementById('led-count').value);
+    const strings = parseFloat(document.getElementById('led-strings').value);
+    
+    const i_led = target_current_ma / strings;
+    const led_data = LED_MODELS[model] || LED_MODELS["Seoul 5050"];
+    const vf_exact = interp(i_led, led_data.currents_ma, led_data.vfs_volts);
+    const total_led_power = count * vf_exact * (i_led / 1000.0);
+    const driver_eff = getTridonicEfficiency(target_current_ma, total_led_power);
+    return total_led_power / driver_eff;
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -337,12 +397,12 @@ async function runAnalysis() {
         
         statusText.innerText = "Processing Physics Engine & Astronomy...";
 
-        // 3. Calcul du profil de consommation avec le Dimming
+        // 3. Préparation du profil de Dimming (Temps continu + Exactitude électrique)
         let base_sys_power_w = calculateRealTimeLED();
+        let base_current_ma = parseFloat(document.getElementById('led-current').value);
         let dimming_enabled = document.getElementById('dimming_en').checked;
-        let time_bins = []; for(let i=12.0; i<36.0; i+=0.25) time_bins.push(i);
-        let power_profile_w = new Array(time_bins.length).fill(base_sys_power_w);
-
+        
+        let dimming_rules = [];
         if (dimming_enabled) {
             const rows = document.getElementById('dimming-tbody').querySelectorAll('tr');
             const parseT = (tStr) => {
@@ -352,16 +412,21 @@ async function runAnalysis() {
             };
             rows.forEach(row => {
                 const inputs = row.querySelectorAll('input');
-                const startH = parseT(inputs[0].value), endH = parseT(inputs[1].value);
+                const startH = parseT(inputs[0].value);
+                const endH = parseT(inputs[1].value);
                 const level = Math.max(0, Math.min(parseFloat(inputs[2].value) || 100, 100)) / 100.0;
-                for(let j=0; j<time_bins.length; j++) {
-                    if (time_bins[j] >= startH && time_bins[j] < endH) power_profile_w[j] = base_sys_power_w * level;
-                }
+                
+                // EXACTEMENT COMME EN PYTHON : On calcule la puissance réelle au nouveau courant
+                const dimmed_current = base_current_ma * level;
+                const true_dimmed_power_w = level === 0 ? 0 : getExactDimmedPower(dimmed_current);
+
+                dimming_rules.push({ start: startH, end: endH, true_power: true_dimmed_power_w });
             });
         }
 
-        // 4. Calcul de la nuit astronomique jour par jour
+        // 4. Calcul de la nuit astronomique (MÉTHODE EXACTE PYTHON)
         let dailyConsMap = {};
+        let sunTimes = {}; 
         for (let i = 0; i < data.daily.time.length; i++) {
             let dateStr = data.daily.time[i];
             let sunsetDate = new Date(data.daily.sunset[i]);
@@ -370,69 +435,130 @@ async function runAnalysis() {
             let sunset_h = sunsetDate.getHours() + sunsetDate.getMinutes() / 60.0;
             let sunrise_next_h = sunriseNextDate.getHours() + sunriseNextDate.getMinutes() / 60.0 + 24.0;
             
+            sunTimes[dateStr] = { sunset: sunset_h, sunrise_next: sunrise_next_h };
+
+            // EXACTEMENT COMME EN PYTHON : (sunrise_next - sunset)
+            let night_duration_h = sunrise_next_h - sunset_h; 
             let daily_wh = 0;
-            for (let j = 0; j < time_bins.length; j++) {
-                if (time_bins[j] >= sunset_h && time_bins[j] < sunrise_next_h) daily_wh += power_profile_w[j] * 0.25;
+
+            if (!dimming_enabled) {
+                // S'il n'y a pas de dimming, c'est juste Puissance * Durée
+                daily_wh = night_duration_h * base_sys_power_w;
+            } else {
+                // S'il y a du dimming, on part de 100% de conso...
+                daily_wh = night_duration_h * base_sys_power_w;
+                
+                // ... et on retire l'énergie économisée par le dimming (intersection parfaite)
+                dimming_rules.forEach(rule => {
+                    let overlap_start = Math.max(sunset_h, rule.start);
+                    let overlap_end = Math.min(sunrise_next_h, rule.end);
+                    let overlap_duration = Math.max(0, overlap_end - overlap_start);
+                    
+                    if (overlap_duration > 0) {
+                        let saved_power = base_sys_power_w - rule.true_power;
+                        daily_wh -= (overlap_duration * saved_power);
+                    }
+                });
             }
             dailyConsMap[dateStr] = daily_wh / 1000.0; // Conversion en kWh
         }
 
-        // 5. Simulation Heure par Heure de la production
+        // 5. Simulation Heure par Heure (Préparation pour la Batterie)
         const log_factor = Math.log(h / 0.5) / Math.log(10 / 0.5);
         let dailyResults = []; 
         let annualProd = {};
         selectedTurbineNames.forEach(n => annualProd[n] = 0);
         
-        let windSpeedsH = [], windDirs = []; // Pour les graphiques de vent
-        let windMonths = [];
+        let windSpeedsH = [], windDirs = [], windMonths = [];
+        let monthlyIrradiance = new Array(12).fill(0);
         
+        // Tableaux horaires pour la simulation de la batterie
+        let hourlyWindWh = [], hourlySolar1WpWh = [], hourlyConsWh = [], hourlyDates = [];
+        const mainTurbineName = selectedTurbineNames[0]; 
+        const mainTurbine = activeTurbines[mainTurbineName];
+
         for (let i = 0; i < data.hourly.time.length; i++) {
             const speed10m = data.hourly.wind_speed_10m[i];
             const dir = data.hourly.wind_direction_10m[i];
             const irradiance = data.hourly.global_tilted_irradiance[i] || 0;
-            
-            if (speed10m === null) continue;
-
-            const dateStr = data.hourly.time[i].split('T')[0];
-            const speedH = speed10m * log_factor;
+            const dateStrFull = data.hourly.time[i];
+            const dateStr = dateStrFull.split('T')[0];
             const month = parseInt(dateStr.split('-')[1]) - 1;
 
-            // Formule Energie Solaire : Production (Wh) = Puissance_Panneau (Wc) × (Irradiance / 1000) × PR
+            // Cumul de l'irradiance brute (en kWh/m²) pour le mois
+            monthlyIrradiance[month] += (irradiance / 1000.0);
+
+            if (speed10m === null) continue;
             
-            // Rendement panneau: (Irradiance * 0.8 d'efficacité) converti en kWh pour un panneau de 1 Wp
-            // division par 1 000 000 : c'est la division par 1000 pour le STC combinée à la division par 1000 pour passer de Wh à kWh
-            
-            const solar_1wp_kwh = (irradiance * 0.8) / 1000000.0; 
+            const speedH = speed10m * log_factor;
             
             windSpeedsH.push(speedH);
             windMonths.push(month);
             windDirs.push(dir);
 
             if (!dailyResults.find(d => d.date === dateStr)) {
-                // On initialise la propriété solar_1wp à 0
                 dailyResults.push({ date: dateStr, month: month, prods: {}, cons: dailyConsMap[dateStr] || 0, solar_1wp: 0 });
             }
             
             let dayObj = dailyResults.find(d => d.date === dateStr);
-            dayObj.solar_1wp += solar_1wp_kwh; // On cumule l'énergie solaire de la journée
+            const solar_1wp_kwh = (irradiance * 0.8) / 1000000.0; // Divisé par 1 000 000 (W/m²->kWc et Wh->kWh)
+            dayObj.solar_1wp += solar_1wp_kwh;
             
             selectedTurbineNames.forEach(name => {
                 const kwh = getPower(activeTurbines[name], speedH) / 1000.0;
                 dayObj.prods[name] = (dayObj.prods[name] || 0) + kwh;
                 annualProd[name] += kwh;
             });
+
+            // --- SAUVEGARDE HORAIRE (Page 4) ---
+            hourlyDates.push(dateStrFull);
+            hourlyWindWh.push(getPower(mainTurbine, speedH)); // 1 heure * W = Wh
+            
+            hourlySolar1WpWh.push((irradiance / 1000.0) * 0.8); 
+
+            // Temps continu heure par heure
+            let h_float = new Date(dateStrFull).getHours();
+            let dayObjSun = sunTimes[dateStr];
+            let h_astronomic = h_float < 12 ? h_float + 24 : h_float;
+            let cons_wh = 0;
+
+            if (dayObjSun) {
+                // L'heure d'analyse s'étend de h_astronomic à h_astronomic + 1
+                let hour_start = h_astronomic;
+                let hour_end = h_astronomic + 1.0;
+                
+                // Combien de minutes de cette heure sont réellement dans la nuit ?
+                let overlap_start = Math.max(hour_start, dayObjSun.sunset);
+                let overlap_end = Math.min(hour_end, dayObjSun.sunrise_next);
+                let night_duration = Math.max(0, overlap_end - overlap_start);
+                
+                if (night_duration > 0) {
+                    if (!dimming_enabled) {
+                        cons_wh = night_duration * base_sys_power_w;
+                    } else {
+                        cons_wh = night_duration * base_sys_power_w;
+                        
+                        // Application des économies de dimming sur cette fraction d'heure
+                        dimming_rules.forEach(rule => {
+                            let dim_overlap_start = Math.max(overlap_start, rule.start);
+                            let dim_overlap_end = Math.min(overlap_end, rule.end);
+                            let dim_duration = Math.max(0, dim_overlap_end - dim_overlap_start);
+                            
+                            if (dim_duration > 0) {
+                                let saved_power = base_sys_power_w - rule.true_power;
+                                cons_wh -= (dim_duration * saved_power);
+                            }
+                        });
+                    }
+                }
+            }
+            hourlyConsWh.push(cons_wh);
         }
 
-        // Calcul du Capacity Factor pour chaque éolienne
-        Object.keys(activeTurbines).forEach(name => {
-            const aep_kwh = annualProd[name];
-            const rated_w = activeTurbines[name].rated_power_w;
-            const hours_in_year = data.hourly.time.length;
-            // Formule : (Production réelle / Production si on tournait à 100% de P. Nominale toute l'année) * 100
-            activeTurbines[name].capacity_factor = (rated_w > 0) ? (aep_kwh * 1000.0) / (rated_w * hours_in_year) * 100.0 : 0;
-        });
-
-        globalData = { dailyResults, annualProd, activeTurbines, windSpeedsH, windDirs, lumi_h: h };
+        // Enregistrement des données horaires globales
+        globalData = { dailyResults, annualProd, activeTurbines, windSpeedsH, windDirs, windMonths, lumi_h: h, monthlyIrradiance: monthlyIrradiance,
+                       hourlyData: { dates: hourlyDates, windWh: hourlyWindWh, solar1WpWh: hourlySolar1WpWh, consWh: hourlyConsWh, mainTurbine: mainTurbineName } };
+        
         
         // On affiche directement le tableau récapitulatif
         drawSummaryTab();
@@ -441,12 +567,19 @@ async function runAnalysis() {
         fetch10YearData(lat, lon, year, h, activeTurbines);
         
         // Appel des graphiques
-        drawAnnualChart(); drawPowerCurves(activeTurbines); drawMonthlyChart(); updateDailyChart();
+        drawAnnualChart(); drawPowerCurves(activeTurbines); drawMonthlyChart(); updateDailyChart(); simulateBatterySystem(); drawSolarChart();
 
         // Appel des 3 graphiques du vent
         drawWindRose(windSpeedsH, windDirs); 
         drawWeibullDistribution(windSpeedsH, h); 
         drawMonthlyWindChart(windSpeedsH, windMonths, h);
+
+        // Envoi des paramètres LED vers le résumé de la Page 4
+        document.getElementById('p4-led-model').innerText = document.getElementById('led-model').value;
+        document.getElementById('p4-led-count').innerText = document.getElementById('led-count').value;
+        document.getElementById('p4-led-current').innerText = document.getElementById('led-current').value + ' mA';
+        document.getElementById('p4-led-raw').innerText = document.getElementById('out-led-power').innerText;
+        document.getElementById('p4-led-real').innerText = document.getElementById('out-sys-power').innerText;
 
         statusText.innerText = "Analysis Success!";
 
@@ -455,39 +588,46 @@ async function runAnalysis() {
 }
 
 // ==========================================
-// ANALYSE SUR 10 ANS
+// ANALYSE SUR 10 ANS (WIND + SOLAR)
 // ==========================================
 async function fetch10YearData(lat, lon, targetYear, h, activeTurbines) {
     try {
         const startYear = parseInt(targetYear) - 10;
         const log_factor = Math.log(h / 0.5) / Math.log(10 / 0.5);
         
-        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${startYear}-01-01&end_date=${targetYear}-12-31&hourly=wind_speed_10m&timezone=Europe/Brussels&wind_speed_unit=ms`;
+        // NOUVEAU : On récupère l'état du switch
+        const solarEnabled = document.getElementById('solar_en').checked;
+        const solarWp = solarEnabled ? (parseFloat(document.getElementById('solar_wp').value) || 0) : 0;
+        
+        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${startYear}-01-01&end_date=${targetYear}-12-31&hourly=wind_speed_10m,global_tilted_irradiance&tilt=35&azimuth=0&timezone=Europe/Brussels&wind_speed_unit=ms`;
         const resp = await fetch(url);
         const data = await resp.json();
         
         Object.keys(activeTurbines).forEach(n => activeTurbines[n].total_10y_kwh = 0);
+        let totalSolar10y = 0;
 
         for (let i = 0; i < data.hourly.time.length; i++) {
             const speed10m = data.hourly.wind_speed_10m[i];
-            if (speed10m === null) continue;
-            const speedH = speed10m * log_factor;
-            Object.keys(activeTurbines).forEach(name => {
-                activeTurbines[name].total_10y_kwh += getPower(activeTurbines[name], speedH) / 1000.0;
-            });
+            const irr = data.hourly.global_tilted_irradiance[i] || 0;
+            
+            if (speed10m !== null) {
+                const speedH = speed10m * log_factor;
+                Object.keys(activeTurbines).forEach(name => {
+                    activeTurbines[name].total_10y_kwh += getPower(activeTurbines[name], speedH) / 1000.0;
+                });
+            }
+            // Si solarEnabled est faux, solarWp est 0, donc totalSolar10y restera à 0
+            totalSolar10y += (irr * 0.8 * solarWp) / 1000000.0;
         }
         
-        // Calcul de la moyenne annuelle sur 11 ans
         Object.keys(activeTurbines).forEach(name => {
             activeTurbines[name].aep_10y_avg = activeTurbines[name].total_10y_kwh / 11.0;
         });
         
-        // On redessine le tableau de l'onglet Summary pour afficher les valeurs qui viennent d'arriver !
-        drawSummaryTab();
+        globalData.solar_10y_avg = totalSolar10y / 11.0;
         
-    } catch (e) {
-        console.error("10-year AEP error:", e);
-    }
+        drawSummaryTab();
+    } catch (e) { console.error("10-year AEP error:", e); }
 }
 
 
@@ -505,50 +645,75 @@ function updateDailyChart() {
     const solarWp = parseFloat(document.getElementById('solar_wp').value) || 0;
 
     let traces = [];
+    let totalWindProd = 0;
+    let totalSolarProd = 0; 
+    let totalCons = 0; // NOUVEAU : Pour le calcul de la moyenne de consommation
     
-    // On boucle sur chaque éolienne active
     Object.keys(globalData.activeTurbines).forEach((name, index) => {
         const windProd = filtered.map(d => d.prods[name]);
-        const groupId = "group" + index; // Identifiant unique pour forcer l'alignement horizontal
+        const groupId = "group" + index; 
         
-        // 1. Production Éolienne
+        if (index === 0) {
+            totalWindProd += windProd.reduce((a, b) => a + b, 0);
+        }
+
         traces.push({
             x: days, 
             y: windProd,
             name: name, 
             type: 'bar', 
             marker: { color: globalData.activeTurbines[name].color },
-            offsetgroup: groupId // Assigne la barre à sa colonne
+            offsetgroup: groupId 
         });
 
-        // 2. Production Solaire (Empilée au-dessus de CETTE éolienne spécifique)
         if (solarEnabled && solarWp > 0) {
             const solarProd = filtered.map(d => d.solar_1wp * solarWp);
+            
+            if (index === 0) {
+                totalSolarProd += solarProd.reduce((a, b) => a + b, 0);
+            }
+
             traces.push({
                 x: days, 
                 y: solarProd,
                 name: index === 0 ? '☀️ Solar Production' : '☀️ Solar', 
                 type: 'bar', 
                 marker: { color: '#FCD34D' }, 
-                base: windProd, // 🔥 MAGIE : La barre solaire commence là où l'éolienne s'arrête !
-                offsetgroup: groupId, // 🔥 On la force dans la MÊME colonne que son éolienne
-                showlegend: index === 0, // Pour éviter d'avoir le Soleil en double dans la légende
+                base: windProd, 
+                offsetgroup: groupId, 
+                showlegend: index === 0, 
                 hoverinfo: 'name+y'
             });
         }
     });
 
     // 3. Consommation LED
+    const consData = filtered.map(d => d.cons);
+    totalCons = consData.reduce((a, b) => a + b, 0); // Calcul du total consommé sur le mois
+
     traces.push({
         x: days, 
-        y: filtered.map(d => d.cons),
+        y: consData,
         name: 'LED Consumption', 
         mode: 'lines+markers', 
         line: { color: '#EF4444', dash: 'dash', width: 3 }
     });
 
+    // MISE À JOUR DU TEXTE DYNAMIQUE
+    const avgWind = totalWindProd / days.length;
+    const avgSolar = totalSolarProd / days.length;
+    const avgTotalProd = avgWind + avgSolar;
+    const avgCons = totalCons / days.length; // Moyenne journalière de consommation
+
+    document.getElementById('daily-avg-text').innerHTML = `
+        <div class="text-right">
+            <div>Avg. Daily Prod: <b class="text-blue-800">${avgTotalProd.toFixed(3)} kWh/d</b> <span class="text-[10px] text-blue-500">(Wind: ${avgWind.toFixed(2)} | Solar: ${avgSolar.toFixed(2)})</span></div>
+            <div class="border-t border-blue-100 mt-1 pt-1">Avg. Daily Cons: <b class="text-red-700">${avgCons.toFixed(3)} kWh/d</b></div>
+        </div>
+    `;
+
     Plotly.newPlot('plot-daily', traces, { 
-        barmode: 'group', // Retour au mode groupé classique
+        barmode: 'group', 
         template: 'plotly_white', 
         title: 'Daily Energy Balance', 
         margin: {t:40, b:40, l:40, r:20},
@@ -559,61 +724,103 @@ function updateDailyChart() {
 function drawMonthlyChart() {
     if (!globalData) return;
     const monthsStr = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const solarEnabled = document.getElementById('solar_en').checked;
+    const solarWp = parseFloat(document.getElementById('solar_wp').value) || 0;
     let traces = [];
 
-    Object.keys(globalData.activeTurbines).forEach(name => {
-        let monthlySums = new Array(12).fill(0);
-        globalData.dailyResults.forEach(d => { monthlySums[d.month] += d.prods[name]; });
-        traces.push({ x: monthsStr, y: monthlySums, name: name, type: 'bar', marker: { color: globalData.activeTurbines[name].color } });
+    Object.keys(globalData.activeTurbines).forEach((name, index) => {
+        let monthlyWindSums = new Array(12).fill(0);
+        globalData.dailyResults.forEach(d => { monthlyWindSums[d.month] += d.prods[name]; });
+        
+        const groupId = "group" + index;
+
+        // 1. Barre Éolienne
+        traces.push({ 
+            x: monthsStr, y: monthlyWindSums, name: name, type: 'bar', 
+            marker: { color: globalData.activeTurbines[name].color },
+            offsetgroup: groupId
+        });
+
+        // 2. Ajout du Solaire (si activé)
+        if (solarEnabled && solarWp > 0) {
+            let monthlySolarSums = new Array(12).fill(0);
+            // On utilise l'irradiance mensuelle stockée (kWh/m2) * 0.8 (PR) * Wp / 1000
+            const solarFactor = (solarWp * 0.8) / 1000.0;
+            globalData.monthlyIrradiance.forEach((irr, m) => {
+                monthlySolarSums[m] = irr * solarFactor;
+            });
+
+            traces.push({
+                x: monthsStr, y: monthlySolarSums, 
+                name: index === 0 ? '☀️ Solar' : '☀️ Solar (' + name + ')', 
+                type: 'bar', marker: { color: '#FCD34D' },
+                base: monthlyWindSums, // Empilement
+                offsetgroup: groupId,
+                showlegend: index === 0
+            });
+        }
     });
 
     let monthlyCons = new Array(12).fill(0);
     globalData.dailyResults.forEach(d => { monthlyCons[d.month] += d.cons; });
-    traces.push({ x: monthsStr, y: monthlyCons, name: 'LED Consumption', mode: 'lines+markers', line: { color: '#EF4444', width: 3, dash: 'dash' }, fill: 'tozeroy', fillcolor: 'rgba(239,68,68,0.1)' });
+    traces.push({ 
+        x: monthsStr, y: monthlyCons, name: 'LED Consumption', 
+        mode: 'lines+markers', line: { color: '#EF4444', width: 3, dash: 'dash' }
+    });
 
     Plotly.newPlot('plot-monthly', traces, { 
-        barmode: 'group', 
-        template: 'plotly_white', 
-        title: 'Overall Monthly Energy Balance',
+        barmode: 'group', template: 'plotly_white', 
+        title: 'Monthly Hybrid Energy Balance',
+        yaxis: { title: "Energy (kWh/month)" },
         responsive: true
     });
 }
 
 function drawAnnualChart() {
+    if (!globalData) return;
     const names = Object.keys(globalData.annualProd);
     const energies = names.map(n => globalData.annualProd[n]);
-    const cfs = names.map(n => globalData.activeTurbines[n].capacity_factor || 0);
     const colors = names.map(n => globalData.activeTurbines[n].color);
 
-    const trace1 = {
-        x: names, y: energies,
-        name: 'Energy (kWh/year)',
-        type: 'bar',
-        marker: { color: colors },
-        text: energies.map(v => v.toFixed(2) + " kWh"),
-        textposition: 'outside'
-    };
+    // CORRECTION : Calcul mathématique exact du Capacity Factor (Uniquement Éolien)
+    const cfs = names.map(n => {
+        const aep = globalData.annualProd[n];
+        const rated_w = globalData.activeTurbines[n].rated_power_w;
+        // Formule : AEP / (Puissance en kW * 8760 heures) * 100
+        return (aep / (rated_w * 8760 / 1000)) * 100;
+    });
 
-    const trace2 = {
-        x: names, y: cfs,
-        name: 'Capacity Factor (%)',
-        yaxis: 'y2',
-        type: 'bar',
-        marker: { opacity: 0.5, color: colors },
-        text: cfs.map(v => v.toFixed(1) + "%"),
-        textposition: 'outside'
-    };
+    // On raccourcit les noms des éoliennes pour enlever HAWT/VAWT 
+    // exemple : "HAWT – VEVOR 12V" -> "VEVOR 12V (500 W)"
+    const shortNames = names.map(n => n.includes('–') ? n.split('–')[1].trim() : n);
 
-    const layout = {
-        title: 'Annual Production & Capacity Factor',
-        template: 'plotly_white',
-        barmode: 'group',
-        yaxis: { title: 'Energy (kWh/year)' },
-        yaxis2: { title: 'Capacity Factor (%)', overlaying: 'y', side: 'right', range: [0, Math.max(...cfs) * 1.5] },
-        legend: { orientation: "h", y: -0.2 }
+    // --- GRAPHIQUE 1 : GAUCHE (ÉNERGIE) ---
+    const traceEnergy = {
+        x: shortNames, y: energies,
+        type: 'bar', marker: { color: colors },
+        text: energies.map(v => v.toFixed(2) + " kWh"), textposition: 'auto',
+        hoverinfo: 'x+y'
     };
+    const layoutEnergy = {
+        title: 'Wind Energy Production (AEP)', template: 'plotly_white',
+        margin: { t: 50, b: 40, l: 50, r: 20 },
+        yaxis: { title: 'Energy (kWh/year)' }
+    };
+    Plotly.newPlot('plot-annual-energy', [traceEnergy], layoutEnergy, {displayModeBar: false, responsive: true});
 
-    Plotly.newPlot('plot-annual', [trace1, trace2], layout, {responsive: true});
+    // --- GRAPHIQUE 2 : DROITE (CAPACITY FACTOR) ---
+    const traceCF = {
+        x: shortNames, y: cfs,
+        type: 'bar', marker: { color: colors, opacity: 0.8 },
+        text: cfs.map(v => v.toFixed(1) + "%"), textposition: 'auto',
+        hoverinfo: 'x+y'
+    };
+    const layoutCF = {
+        title: 'Wind Capacity Factor (CF)', template: 'plotly_white',
+        margin: { t: 50, b: 40, l: 50, r: 20 },
+        yaxis: { title: 'Capacity Factor (%)', range: [0, Math.max(...cfs) * 1.2 || 100] } // Ajoute 20% de marge au-dessus
+    };
+    Plotly.newPlot('plot-annual-cf', [traceCF], layoutCF, {displayModeBar: false, responsive: true});
 }
 
 function drawPowerCurves(turbines) {
@@ -630,68 +837,143 @@ function drawPowerCurves(turbines) {
 }
 
 function drawSummaryTab() {
+    if (!globalData) return;
     const tableBody = document.getElementById('summary-table-body');
     const cardsContainer = document.getElementById('summary-cards-container');
     
-    // 1. Calcul de la consommation annuelle totale
+    // Vérification de l'activation du solaire
+    const solarEnabled = document.getElementById('solar_en').checked;
+    const solarWp = solarEnabled ? (parseFloat(document.getElementById('solar_wp').value) || 0) : 0;
+    
     let annualCons = 0;
     globalData.dailyResults.forEach(d => annualCons += d.cons);
     
     const mainTurbineName = Object.keys(globalData.activeTurbines)[0];
-    const mainAep = globalData.annualProd[mainTurbineName];
-    const mainAep10y = globalData.activeTurbines[mainTurbineName].aep_10y_avg;
+    const windAep = globalData.annualProd[mainTurbineName];
+    const windAep10y = globalData.activeTurbines[mainTurbineName].aep_10y_avg;
     
-    const aep10yHTML = mainAep10y ? `${mainAep10y.toFixed(2)} <span class="text-sm font-normal">kWh/yr</span>` : `⏳ <span class="text-sm font-normal">Calculating...</span>`;
+    // Calcul Solaire Annuel
+    let solarAep = 0;
+    globalData.dailyResults.forEach(d => solarAep += (d.solar_1wp * solarWp));
+    
+    // Solaire 10 ans
+    const solarAep10y = solarEnabled ? (globalData.solar_10y_avg || solarAep) : 0;
 
-    // 2. Injection des 3 cartes globales directement dans l'onglet Summary
+    // 1. KPI Cards (Disposition en 3 lignes)
     cardsContainer.innerHTML = `
         <div class="bg-blue-50 border-l-4 border-blue-500 p-4 rounded shadow-sm">
-            <p class="text-xs text-blue-600 font-bold uppercase">AEP (${document.getElementById('input-year').value}) - ${mainTurbineName.substring(0,25)}</p>
-            <h4 class="text-2xl font-bold text-blue-800">${mainAep.toFixed(2)} <span class="text-sm font-normal">kWh/yr</span></h4>
+            <p class="text-[10px] text-blue-600 font-bold uppercase">Wind AEP (Selected Year)</p>
+            <h4 class="text-xl font-bold text-blue-800">${windAep.toFixed(2)} <span class="text-xs font-normal">kWh/yr</span></h4>
         </div>
-        <div class="bg-purple-50 border-l-4 border-purple-500 p-4 rounded shadow-sm">
-            <p class="text-xs text-purple-600 font-bold uppercase">AEP (10-Year Avg)</p>
-            <h4 class="text-2xl font-bold text-purple-800">${aep10yHTML}</h4>
+        <div class="bg-orange-50 border-l-4 border-orange-400 p-4 rounded shadow-sm">
+            <p class="text-[10px] text-orange-600 font-bold uppercase">Solar AEP (Selected Year)</p>
+            <h4 class="text-xl font-bold text-orange-800">${solarAep.toFixed(2)} <span class="text-xs font-normal">kWh/yr</span></h4>
         </div>
-        <div class="bg-emerald-50 border-l-4 border-emerald-500 p-4 rounded shadow-sm">
-            <p class="text-xs text-emerald-600 font-bold uppercase">LED Annual Consumption</p>
-            <h4 class="text-2xl font-bold text-emerald-800">${annualCons.toFixed(2)} <span class="text-sm font-normal">kWh/yr</span></h4>
+        <div class="bg-slate-800 border-l-4 border-slate-400 p-4 rounded shadow-sm text-white">
+            <p class="text-[10px] text-slate-400 font-bold uppercase">Total Hybrid AEP (Selected Year)</p>
+            <h4 class="text-xl font-bold text-white">${(windAep + solarAep).toFixed(2)} <span class="text-xs font-normal">kWh/yr</span></h4>
+        </div>
+        
+        <div class="bg-blue-100 border-l-4 border-blue-600 p-4 rounded shadow-sm">
+            <p class="text-[10px] text-blue-700 font-bold uppercase">Wind AEP (10-Year Avg)</p>
+            <h4 class="text-xl font-bold text-blue-900">${windAep10y ? windAep10y.toFixed(2) : '--'} <span class="text-xs font-normal">kWh/yr</span></h4>
+        </div>
+        <div class="bg-orange-100 border-l-4 border-orange-600 p-4 rounded shadow-sm">
+            <p class="text-[10px] text-orange-700 font-bold uppercase">Solar AEP (10-Year Avg)</p>
+            <h4 class="text-xl font-bold text-orange-900">${solarAep10y.toFixed(2)} <span class="text-xs font-normal">kWh/yr</span></h4>
+        </div>
+        <div class="bg-slate-700 border-l-4 border-slate-400 p-4 rounded shadow-sm text-white">
+            <p class="text-[10px] text-slate-300 font-bold uppercase">Total Hybrid AEP (10-Year Avg)</p>
+            <h4 class="text-xl font-bold text-white">${windAep10y ? (windAep10y + solarAep10y).toFixed(2) : '--'} <span class="text-xs font-normal">kWh/yr</span></h4>
+        </div>
+
+        <div class="md:col-span-2 lg:col-span-3 flex justify-center mt-2">
+            <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded shadow-sm w-full md:w-1/2 lg:w-1/3">
+                <p class="text-[10px] text-red-600 font-bold uppercase">Annual LED Consumption</p>
+                <h4 class="text-xl font-bold text-red-800">${annualCons.toFixed(2)} <span class="text-xs font-normal">kWh/yr</span></h4>
+            </div>
         </div>
     `;
 
-    // 3. Remplissage du tableau
+    // 2. Mise à jour du Tableau avec alignement STRICT sur les colonnes HTML
     tableBody.innerHTML = '';
-
     Object.keys(globalData.activeTurbines).forEach(name => {
         const t = globalData.activeTurbines[name];
-        const aepYear = globalData.annualProd[name];
-        const aep10y = t.aep_10y_avg;
-        const cf = t.capacity_factor || 0;
         
-        // Calcul des jours d'autonomie
-        const autoDays = globalData.dailyResults.filter(d => d.prods[name] >= d.cons).length;
+        // --- CALCULS ---
+        // A. Puissance nominale
+        const ratedPower = t.rated_power_w; 
+        
+        // B. AEP 1 An (Hybride)
+        const wAep = globalData.annualProd[name];
+        const totalAep1Year = wAep + solarAep;
+        
+        // C. AEP 10 Ans (Hybride) - gère le délai de chargement API
+        const wAep10y = t.aep_10y_avg;
+        const totalAep10Years = wAep10y ? (wAep10y + solarAep10y) : null;
+        
+        // D. Autonomie et Capacity Factor
+        const autoDays = globalData.dailyResults.filter(d => (d.prods[name] + d.solar_1wp * solarWp) >= d.cons).length;
+        const windCF = (wAep / (ratedPower * 8760 / 1000)) * 100;
 
-        const aep10yText = aep10y ? aep10y.toFixed(2) + ' kWh' : '<span class="text-slate-400 italic">⏳...</span>';
+        // Affichage conditionnel pendant le téléchargement des 10 ans
+        const aep10yDisplay = totalAep10Years !== null 
+            ? `<span class="font-bold text-blue-600">${totalAep10Years.toFixed(1)} kWh</span>` 
+            : `<span class="text-slate-400 italic">Calculating...</span>`;
 
-        const row = `
+        // --- INSERTION HTML ---
+        tableBody.innerHTML += `
             <tr class="border-b border-slate-100 hover:bg-white transition">
                 <td class="py-4 px-2 flex items-center gap-2">
                     <span class="w-3 h-3 rounded-full" style="background-color: ${t.color}"></span>
-                    ${name}
+                    <div class="flex flex-col">
+                        <span class="font-bold">${name.includes('–') ? name.split('–')[1].trim() : name}</span>
+                        <span class="text-[10px] text-slate-400">${solarEnabled ? '+ ' + solarWp + 'Wp Solar' : 'Wind Only'}</span>
+                    </div>
                 </td>
-                <td class="text-center">${t.rated_power_w.toFixed(0)} W</td>
-                <td class="text-center font-bold text-blue-600">${aepYear.toFixed(2)} kWh</td>
-                <td class="text-center">${aep10yText}</td>
+                
+                <td class="text-center font-semibold text-slate-600">${ratedPower.toFixed(0)} W</td>
+                
+                <td class="text-center">${totalAep1Year.toFixed(1)} kWh</td>
+                
+                <td class="text-center">${aep10yDisplay}</td>
+                
                 <td class="text-center">
-                    <span class="px-2 py-1 rounded-full ${autoDays > 200 ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}">
+                    <span class="px-2 py-1 rounded-full ${autoDays > 250 ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}">
                         ${autoDays} days
                     </span>
                 </td>
-                <td class="text-center font-bold">${cf.toFixed(1)}%</td>
+                
+                <td class="text-center">${windCF.toFixed(1)}%</td>
             </tr>
         `;
-        tableBody.innerHTML += row;
     });
+}
+
+// Graphique d'Irradiation Solaire mensuelle (Type PVGIS)
+function drawSolarChart() {
+    if (!globalData || !globalData.monthlyIrradiance) return;
+    const monthsStr = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    
+    const trace = {
+        x: monthsStr,
+        y: globalData.monthlyIrradiance,
+        type: 'scatter',
+        mode: 'lines+markers',
+        name: 'Irradiation on chosen angle', // EN ANGLAIS
+        line: { color: '#c026d3', width: 3 }, 
+        marker: { color: '#c026d3', size: 8 }
+    };
+
+    const layout = {
+        title: 'Monthly Solar Irradiation [kWh/m²] (Tilt 35°, Azimuth 0°)', 
+        template: 'plotly_white',
+        margin: { t: 50, b: 40, l: 50, r: 20 },
+        yaxis: { title: 'Monthly Irradiation [kWh/m²]', rangemode: 'tozero' },
+        xaxis: { showgrid: false }
+    };
+
+    Plotly.newPlot('plot-solar-monthly', [trace], layout, {displayModeBar: false, responsive: true});
 }
 
 
@@ -884,7 +1166,7 @@ async function fetchVevorData() {
 
     btn.innerText = "⏳ Fetching VEVOR & OM...";
     btn.disabled = true;
-    statusMsg.innerText = "Downloading from IBM Wunderground...";
+    statusMsg.innerText = "Downloading from Wunderground...";
     statusMsg.className = "text-sm font-semibold text-center mt-4 text-blue-600";
 
     try {
@@ -918,8 +1200,8 @@ async function fetchVevorData() {
             let avgMs = (obs.metric.windspeedAvg / 3.6);
             let gustMs = (obs.metric.windgustHigh / 3.6);
             
-            wuAvgs.push(avgMs);
-            wuGusts.push(gustMs);
+            wuAvgs.push(avgMs.toFixed(2)); // RÉCUPÉRATION DE LA VITESSE MOYENNE
+            wuGusts.push(gustMs.toFixed(2)); // RÉCUPÉRATION DES RAFALES 
             wuDirs.push(obs.winddirAvg); // RÉCUPÉRATION DE LA DIRECTION
             
             sumAvg += avgMs;
@@ -1167,4 +1449,184 @@ function drawMap3DWindRose(speeds, directions) {
     };
 
     Plotly.newPlot('plot-map3d-rose', traces, layout, {displayModeBar: false, responsive: true});
+}
+
+// ==========================================
+// 12. HYBRID AUTONOMY & BATTERY SIMULATOR
+// ==========================================
+
+function toggleBatMode() {
+    const mode = document.getElementById('bat-mode').value;
+    if (mode === 'days') {
+        document.getElementById('div-bat-days').classList.remove('hidden');
+        document.getElementById('div-bat-wh').classList.add('hidden');
+    } else {
+        document.getElementById('div-bat-days').classList.add('hidden');
+        document.getElementById('div-bat-wh').classList.remove('hidden');
+    }
+}
+
+function simulateBatterySystem() {
+    if (!globalData || !globalData.hourlyData) {
+        document.getElementById('plot-soc').innerHTML = '<div class="text-center mt-10 text-slate-400">Run Global Analysis on Page 1 first.</div>';
+        return;
+    }
+
+    const mode = document.getElementById('bat-mode').value;
+    const solWp = parseFloat(document.getElementById('sol-wp').value) || 0;
+    const hData = globalData.hourlyData;
+    const nHours = hData.dates.length;
+
+    // 1. Calcul de la Capacité (LiFePO4 DoD = 0.8)
+    let totalCapWh = 0;
+    let usableCapWh = 0;
+    const dod = 0.8;
+    
+    // Consommation moyenne par 24h
+    const annualConsWh = hData.consWh.reduce((a, b) => a + b, 0);
+    const avgDailyConsWh = annualConsWh / 365.0;
+
+    if (mode === 'days') {
+        const days = parseFloat(document.getElementById('bat-days').value) || 3;
+        usableCapWh = avgDailyConsWh * days;
+        totalCapWh = usableCapWh / dod;
+    } else {
+        totalCapWh = parseFloat(document.getElementById('bat-wh').value) || 1500;
+        usableCapWh = totalCapWh * dod;
+        
+        // NOUVEAU : Affichage de l'équivalent en jours d'autonomie pour le mode manuel
+        const eqDays = usableCapWh / avgDailyConsWh;
+        const eqDiv = document.getElementById('manual-days-equiv');
+        if (eqDiv) eqDiv.innerHTML = `Equivalent to <b>~${eqDays.toFixed(1)} backup days</b>`;
+    }
+
+    // 2. Boucle de Simulation Heure par Heure
+    let socWh = usableCapWh; // On commence batterie pleine
+    let lostWh = 0;
+    let blackoutHours = 0;
+    
+    let socHistory = new Float32Array(nHours);
+    let netHistory = new Float32Array(nHours);
+
+    for (let i = 0; i < nHours; i++) {
+        let prod = hData.windWh[i] + (hData.solar1WpWh[i] * solWp);
+        let cons = hData.consWh[i];
+        let netFlow = prod - cons;
+
+        socWh += netFlow;
+
+        if (socWh > usableCapWh) {
+            lostWh += (socWh - usableCapWh);
+            socWh = usableCapWh; // Plafond (Batterie pleine)
+        } else if (socWh < 0) {
+            blackoutHours++;
+            socWh = 0; // Plancher (Extinction des LED)
+        }
+
+        socHistory[i] = (socWh / usableCapWh) * 100;
+        netHistory[i] = netFlow;
+    }
+
+    // 3. Mise à jour des KPIs
+    const autonomyPct = ((nHours - blackoutHours) / nHours) * 100;
+    document.getElementById('kpi-bat-total').innerHTML = `${totalCapWh.toFixed(0)} <span class="text-sm font-normal text-slate-400">Wh</span>`;
+    document.getElementById('kpi-bat-auto').innerHTML = `${autonomyPct.toFixed(1)} <span class="text-sm font-normal text-emerald-400">%</span>`;
+    document.getElementById('kpi-bat-blackout').innerHTML = `${blackoutHours} <span class="text-sm font-normal text-red-400">hrs</span>`;
+    document.getElementById('kpi-bat-wasted').innerHTML = `${(lostWh / 1000.0).toFixed(1)} <span class="text-sm font-normal text-orange-300">kWh</span>`;
+
+
+    // =========================================
+    // 4. EXTRACTION DES DONNÉES DU MOIS SÉLECTIONNÉ
+    // =========================================
+    const targetMonth = parseInt(document.getElementById('bat-month-filter').value);
+    
+    let monthlyDates = [];
+    let monthlySoC = [];
+    
+    let dailyLabels = [];
+    let dailyWind = [];
+    let dailySolar = [];
+    let dailyCons = [];
+
+    let currentDayStr = "";
+    let tempWind = 0, tempSolar = 0, tempCons = 0;
+
+    for (let i = 0; i < nHours; i++) {
+        let dateFull = hData.dates[i];
+        let dateObj = new Date(dateFull);
+        
+        if (dateObj.getMonth() === targetMonth) {
+            // Pour le graphique du haut (Heure par heure)
+            monthlyDates.push(dateFull);
+            monthlySoC.push(socHistory[i]);
+
+            // Pour le graphique du bas (Agrégation par jour)
+            let dayStr = dateFull.split('T')[0];
+            if (dayStr !== currentDayStr) {
+                if (currentDayStr !== "") {
+                    dailyLabels.push(currentDayStr.split('-')[2]); // Juste le numéro du jour
+                    dailyWind.push(tempWind);
+                    dailySolar.push(tempSolar);
+                    dailyCons.push(-tempCons); // Négatif pour le graphique inversé
+                }
+                currentDayStr = dayStr;
+                tempWind = 0; tempSolar = 0; tempCons = 0;
+            }
+            tempWind += hData.windWh[i];
+            tempSolar += (hData.solar1WpWh[i] * solWp);
+            tempCons += hData.consWh[i];
+        }
+    }
+    // Ajouter le tout dernier jour du mois
+    if (currentDayStr !== "") {
+        dailyLabels.push(currentDayStr.split('-')[2]);
+        dailyWind.push(tempWind);
+        dailySolar.push(tempSolar);
+        dailyCons.push(-tempCons);
+    }
+
+
+    // =========================================
+    // 5. CRÉATION DES GRAPHIQUES
+    // =========================================
+
+    // GRAPHIQUE 1 : SoC Mensuel (Heure par Heure)
+    const traceSoCMonth = {
+        x: monthlyDates, y: monthlySoC, type: 'scatter', mode: 'lines',
+        name: 'Battery SoC (%)', line: { color: '#10B981', width: 2 }, fill: 'tozeroy', fillcolor: 'rgba(16, 185, 129, 0.15)'
+    };
+    const layoutSoCMonth = {
+        template: 'plotly_white', margin: { t: 10, b: 30, l: 40, r: 20 },
+        yaxis: { range: [0, 105], title: 'Charge (%)' },
+        xaxis: { showgrid: false },
+        shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: '#EF4444', width: 2, dash: 'dash' } }]
+    };
+    Plotly.newPlot('plot-soc-month', [traceSoCMonth], layoutSoCMonth, {displayModeBar: false, responsive: true});
+
+
+    // GRAPHIQUE 2 : Bilan Énergétique (Barres par Jour)
+    const traceDailyWind = { x: dailyLabels, y: dailyWind, type: 'bar', name: 'Wind Prod.', marker: { color: '#3B82F6' } };
+    const traceDailySolar = { x: dailyLabels, y: dailySolar, type: 'bar', name: 'Solar Prod.', marker: { color: '#FCD34D' } };
+    const traceDailyCons = { x: dailyLabels, y: dailyCons, type: 'bar', name: 'LED Cons.', marker: { color: '#EF4444' } };
+
+    const layoutBalanceMonth = {
+        template: 'plotly_white', barmode: 'relative', margin: { t: 10, b: 30, l: 40, r: 20 },
+        yaxis: { title: 'Energy (Wh/day)' }, xaxis: { title: 'Day of the month', type: 'category' },
+        legend: { orientation: "h", y: -0.25, xanchor: "center", x: 0.5 }
+    };
+    Plotly.newPlot('plot-balance-month', [traceDailyWind, traceDailySolar, traceDailyCons], layoutBalanceMonth, {displayModeBar: false, responsive: true});
+
+
+    // GRAPHIQUE 3 : Vue Annuelle Globale (Petit format)
+    const traceSoCAnnual = {
+        x: hData.dates, y: socHistory, type: 'scatter', mode: 'lines',
+        name: 'Annual SoC', line: { color: '#94A3B8', width: 1 }, fill: 'tozeroy', fillcolor: 'rgba(148, 163, 184, 0.1)'
+    };
+    const layoutSoCAnnual = {
+        template: 'plotly_white', margin: { t: 5, b: 20, l: 40, r: 20 },
+        yaxis: { range: [0, 105], showticklabels: false }, // On cache les labels Y pour gagner de la place
+        xaxis: { showgrid: false },
+        shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: 0, y1: 0, line: { color: '#EF4444', width: 1, dash: 'dash' } }]
+    };
+    Plotly.newPlot('plot-soc-annual', [traceSoCAnnual], layoutSoCAnnual, {displayModeBar: false, responsive: true});
 }
