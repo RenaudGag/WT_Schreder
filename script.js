@@ -21,20 +21,39 @@ const LED_MODELS = {
 };
 
 
+
 // ==========================================
 // 2. GESTION DES ONGLETS (NAVIGATION)
 // ==========================================
 
 function openTab(evt, tabId) {
+    // 1. On cache tout et on réinitialise les boutons
     document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.remove('active-tab', 'text-blue-600', 'border-b-2', 'border-blue-600');
         btn.classList.add('text-slate-500');
     });
+    
+    // 2. On affiche l'onglet demandé et on active son bouton
     document.getElementById(tabId).classList.remove('hidden');
     evt.currentTarget.classList.remove('text-slate-500');
     evt.currentTarget.classList.add('active-tab', 'text-blue-600', 'border-b-2', 'border-blue-600');
-    if(tabId === 'tab-calculator' && typeof map !== 'undefined') { setTimeout(() => { map.invalidateSize(); }, 100); }
+    
+    // 3. Redimensionnement de la carte Leaflet (Onglet 1)
+    if(tabId === 'tab-calculator' && typeof map !== 'undefined') { 
+        setTimeout(() => { map.invalidateSize(); }, 100); 
+    }
+
+    // 4. Redimensionnement forcé des graphiques Plotly (Onglets cachés)
+    setTimeout(() => {
+        const activeTab = document.getElementById(tabId);
+        // On trouve tous les graphiques Plotly dans l'onglet qu'on vient d'ouvrir
+        const plotlyGraphs = activeTab.querySelectorAll('.js-plotly-plot');
+        
+        plotlyGraphs.forEach(graph => {
+            Plotly.Plots.resize(graph); // On force le recalcul de la taille à 100%
+        });
+    }, 50); // Le petit délai de 50ms laisse le temps au CSS "hidden" de disparaître
 }
 
 function openSubTab(evt, tabId) {
@@ -78,8 +97,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     cartoDB.addTo(map);
 
-    // --- Suite du code classique (Marqueur et Recherche) ---
-    windIcon = L.icon({ iconUrl: 'turbine_icon.png', iconSize: [72, 72], iconAnchor: [36, 72], popupAnchor: [0, -72] });
+    windIcon = L.icon({ iconUrl: 'Image/turbine_icon.png', iconSize: [72, 72], iconAnchor: [36, 72], popupAnchor: [0, -72] });
     marker = L.marker([50.6418, 5.5533], {icon: windIcon}).addTo(map);
 
     function placeMarker(lat, lng) {
@@ -358,6 +376,9 @@ async function runAnalysis() {
     const lon = parseFloat(document.getElementById('input-lon').value);
     const year = document.getElementById('input-year').value;
     const h = parseFloat(document.getElementById('input-h').value);
+    const z0 = parseFloat(document.getElementById('input-z0').value);
+
+    const tilt = parseFloat(document.getElementById('input-tilt').value) || 35;
 
     // 1. Préparation des éoliennes
     let activeTurbines = {};
@@ -391,7 +412,7 @@ async function runAnalysis() {
 
     try {
         // 2. Fetch API avec les données Solaires Astronomiques et la Direction du Vent !
-        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${year}-01-01&end_date=${year}-12-31&hourly=wind_speed_10m,wind_direction_10m,global_tilted_irradiance&tilt=35&azimuth=0&daily=sunrise,sunset&timezone=Europe/Brussels&wind_speed_unit=ms`;
+        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${year}-01-01&end_date=${year}-12-31&hourly=wind_speed_10m,wind_direction_10m,global_tilted_irradiance&tilt=${tilt}&azimuth=0&daily=sunrise,sunset&timezone=Europe/Brussels&wind_speed_unit=ms`;
         const resp = await fetch(url);
         const data = await resp.json();
         
@@ -464,7 +485,7 @@ async function runAnalysis() {
         }
 
         // 5. Simulation Heure par Heure (Préparation pour la Batterie)
-        const log_factor = Math.log(h / 0.5) / Math.log(10 / 0.5);
+        const log_factor = Math.log(h / z0) / Math.log(10 / z0);
         let dailyResults = []; 
         let annualProd = {};
         selectedTurbineNames.forEach(n => annualProd[n] = 0);
@@ -601,9 +622,12 @@ async function runAnalysis() {
 async function fetch10YearData(lat, lon, targetYear, h, activeTurbines) {
     try {
         const startYear = parseInt(targetYear) - 10;
-        const log_factor = Math.log(h / 0.5) / Math.log(10 / 0.5);
+        const z0 = parseFloat(document.getElementById('input-z0').value);
+        const log_factor = Math.log(h / z0) / Math.log(10 / z0);
+
+        const tilt = parseFloat(document.getElementById('input-tilt').value) || 35;
         
-        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${startYear}-01-01&end_date=${targetYear}-12-31&hourly=wind_speed_10m,global_tilted_irradiance&tilt=35&azimuth=0&timezone=Europe/Brussels&wind_speed_unit=ms`;
+        const url = `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lon}&start_date=${startYear}-01-01&end_date=${targetYear}-12-31&hourly=wind_speed_10m,global_tilted_irradiance&tilt=${tilt}&azimuth=0&timezone=Europe/Brussels&wind_speed_unit=ms`;
         const resp = await fetch(url);
         const data = await resp.json();
         
@@ -938,6 +962,8 @@ function drawSummaryTab() {
 function drawSolarChart() {
     if (!globalData || !globalData.monthlyIrradiance) return;
     const monthsStr = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    const tilt = document.getElementById('input-tilt') ? document.getElementById('input-tilt').value : 35;
     
     const trace = {
         x: monthsStr,
@@ -950,7 +976,8 @@ function drawSolarChart() {
     };
 
     const layout = {
-        title: 'Monthly Solar Irradiation [kWh/m²] (Tilt 35°, Azimuth 0°)', 
+        // Le titre reflète maintenant l'angle choisi
+        title: `Monthly Solar Irradiation [kWh/m²] (Tilt ${tilt}°, Azimuth 0°)`, 
         template: 'plotly_white',
         margin: { t: 50, b: 40, l: 50, r: 20 },
         yaxis: { title: 'Monthly Irradiation [kWh/m²]', rangemode: 'tozero' },
