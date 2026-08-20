@@ -958,25 +958,27 @@ function drawSummaryTab() {
     });
 }
 
-// Graphique d'Irradiation Solaire mensuelle (Type PVGIS)
+
+
+// Graphiques Solaires (Irradiation + Production type PVGIS)
 function drawSolarChart() {
     if (!globalData || !globalData.monthlyIrradiance) return;
     const monthsStr = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
     const tilt = document.getElementById('input-tilt') ? document.getElementById('input-tilt').value : 35;
     
-    const trace = {
+    // --- 1. Graphique d'Irradiation (Existant) ---
+    const traceIrr = {
         x: monthsStr,
         y: globalData.monthlyIrradiance,
         type: 'scatter',
         mode: 'lines+markers',
-        name: 'Irradiation on chosen angle', // EN ANGLAIS
+        name: 'Irradiation on chosen angle',
         line: { color: '#c026d3', width: 3 }, 
         marker: { color: '#c026d3', size: 8 }
     };
 
-    const layout = {
-        // Le titre reflète maintenant l'angle choisi
+    const layoutIrr = {
         title: `Monthly Solar Irradiation [kWh/m²] (Tilt ${tilt}°, Azimuth 0°)`, 
         template: 'plotly_white',
         margin: { t: 50, b: 40, l: 50, r: 20 },
@@ -984,7 +986,40 @@ function drawSolarChart() {
         xaxis: { showgrid: false }
     };
 
-    Plotly.newPlot('plot-solar-monthly', [trace], layout, {displayModeBar: false, responsive: true});
+    Plotly.newPlot('plot-solar-monthly', [traceIrr], layoutIrr, {displayModeBar: false, responsive: true});
+
+    // --- 2. Graphique de Production d'Énergie Solaire en barres ---
+    const solarEnabled = document.getElementById('solar_en').checked;
+    const solarWp = parseFloat(document.getElementById('solar_wp').value) || 0;
+    
+    // Si le solaire n'est pas activé, on crée un tableau de 0
+    let monthlySolarEnergy = new Array(12).fill(0);
+    
+    if (solarEnabled && solarWp > 0) {
+        // Utilisation du même facteur de conversion (Pertes de 20%) que dans drawMonthlyChart
+        const solarFactor = (solarWp * 0.8) / 1000.0;
+        monthlySolarEnergy = globalData.monthlyIrradiance.map(irr => irr * solarFactor);
+    }
+
+    const traceEnergy = {
+        x: monthsStr,
+        y: monthlySolarEnergy,
+        type: 'bar',
+        name: 'Solar Energy Production',
+        marker: { color: '#FCD34D' },
+        text: monthlySolarEnergy.map(v => v > 0 ? v.toFixed(1) + " kWh" : ""),
+        textposition: 'auto'
+    };
+
+    const layoutEnergy = {
+        title: `Monthly Solar Energy Production (for ${solarWp} Wp)`, 
+        template: 'plotly_white',
+        margin: { t: 50, b: 40, l: 50, r: 20 },
+        yaxis: { title: 'Energy Production [kWh/month]', rangemode: 'tozero' },
+        xaxis: { showgrid: false }
+    };
+
+    Plotly.newPlot('plot-solar-energy', [traceEnergy], layoutEnergy, {displayModeBar: false, responsive: true});
 }
 
 
@@ -1147,7 +1182,6 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById('wu-start').value = lastWeek.toISOString().split('T')[0];
 });
 
-// Solar Toggle & Slider
 document.getElementById('solar_en').addEventListener('change', (e) => {
     const sSet = document.getElementById('solar-settings');
     if(e.target.checked) sSet.classList.remove('opacity-50', 'pointer-events-none');
@@ -1159,6 +1193,7 @@ document.getElementById('solar_en').addEventListener('change', (e) => {
         drawMonthlyChart();
         drawSummaryTab();
         simulateBatterySystem();
+        drawSolarChart(); 
     }
 });
 
@@ -1171,8 +1206,10 @@ document.getElementById('solar_wp').addEventListener('input', (e) => {
         drawMonthlyChart();
         drawSummaryTab();
         simulateBatterySystem();
+        drawSolarChart();
     }
 });
+
 
 
 async function fetchVevorData() {
