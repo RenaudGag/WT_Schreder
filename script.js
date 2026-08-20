@@ -757,7 +757,7 @@ function drawMonthlyChart() {
 
             traces.push({
                 x: monthsStr, y: monthlySolarSums, 
-                name: index === 0 ? '☀️ Solar' : '☀️ Solar (' + name + ')', 
+                name: index === 0 ? 'Solar' : 'Solar (' + name + ')', 
                 type: 'bar', marker: { color: '#FCD34D' },
                 base: monthlyWindSums, // Empilement
                 offsetgroup: groupId,
@@ -775,9 +775,15 @@ function drawMonthlyChart() {
 
     Plotly.newPlot('plot-monthly', traces, { 
         barmode: 'group', template: 'plotly_white', 
-        title: 'Monthly Hybrid Energy Balance',
+        title: 'Monthly Energy Balance',
         yaxis: { title: "Energy (kWh/month)" },
-        responsive: true
+        responsive: true,
+        legend: {
+            orientation: "h",       // Met la légende à l'horizontale
+            xanchor: "center",      // Ancre le milieu de la légende
+            x: 0.5,                 // La place exactement au milieu (50%)
+            y: -0.2                 // La descend en dessous de l'axe X
+        }
     });
 }
 
@@ -838,7 +844,7 @@ function drawPowerCurves(turbines) {
             name: name, mode: 'lines', line: { color: turbines[name].color, dash: turbines[name].type === "HAWT" ? "solid" : "dot", width: 2.5 }
         });
     });
-    Plotly.newPlot('plot-curves', traces, { template: 'plotly_white', title: 'Absolute Power Curves (W)', xaxis: {title: "Wind Speed (m/s)"}, yaxis: {title: "Power (W)"}, legend: {orientation: "h", y: -0.2} });
+    Plotly.newPlot('plot-curves', traces, { template: 'plotly_white', title: 'Power Curves (incl. generator efficiency)', xaxis: {title: "Wind Speed (m/s)"}, yaxis: {title: "Electrical Power (W)"}, legend: {orientation: "h", y: -0.2} });
 }
 
 function drawSummaryTab() {
